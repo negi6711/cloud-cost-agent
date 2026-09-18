@@ -1,0 +1,17 @@
+Date,Service,Linked account,Region,Unblended cost,Currency
+2026-05-01,Amazon Elastic Compute Cloud - Compute,111111111111,us-east-1,4200.10,USD
+2026-05-01,Amazon Relational Database Service,111111111111,us-east-1,1800.00,USD
+2026-05-01,Amazon Simple Storage Service,111111111111,us-east-1,310.55,USD
+2026-05-01,AWS Lambda,111111111111,us-east-1,45.20,USD
+2026-05-01,AmazonCloudWatch,111111111111,us-east-1,120.00,USD
+2026-06-01,Amazon Elastic Compute Cloud - Compute,111111111111,us-east-1,4350.40,USD
+2026-06-01,Amazon Relational Database Service,111111111111,us-east-1,1800.00,USD
+2026-06-01,Amazon Simple Storage Service,111111111111,us-east-1,325.10,USD
+2026-06-01,AWS Lambda,111111111111,us-east-1,47.90,USD
+2026-06-01,AmazonCloudWatch,111111111111,us-east-1,125.50,USD
+2026-07-01,Amazon Elastic Compute Cloud - Compute,111111111111,us-east-1,4410.00,USD
+2026-07-01,Amazon Relational Database Service,111111111111,us-east-1,1795.25,USD
+2026-07-01,Amazon Simple Storage Service,111111111111,us-east-1,330.00,USD
+2026-07-01,AWS Lambda,111111111111,us-east-1,52.35,USD
+2026-07-01,AmazonCloudWatch,111111111111,us-east-1,131.40,USD
+2026-07-01,Amazon Elastic Container Service,111111111111,us-east-1,1840.00,USD

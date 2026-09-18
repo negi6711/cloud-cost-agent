@@ -20,7 +20,7 @@ type Phase =
   | { kind: "idle" }
   | { kind: "uploading"; percent: number }
   | { kind: "verifying" }
-  | { kind: "processing"; runId: string; status: string }
+  | { kind: "processing"; runId: string; status: string; message?: string | null }
   | { kind: "error"; message: string }
   | { kind: "manual-review-sent" };
 
@@ -78,8 +78,8 @@ export function UploadFlow({ disclosure }: Props) {
       try {
         const res = await fetch(`/api/snapshots/${processing.runId}`, { cache: "no-store" });
         if (res.ok) {
-          const body = (await res.json()) as { status: string };
-          setPhase({ kind: "processing", runId: processing.runId, status: body.status });
+          const body = (await res.json()) as { status: string; message: string | null };
+          setPhase({ kind: "processing", runId: processing.runId, status: body.status, message: body.message });
           return;
         }
       } catch {
@@ -158,15 +158,32 @@ export function UploadFlow({ disclosure }: Props) {
 
   if (processing) {
     const done = TERMINAL.has(processing.status);
+    const failed = processing.status === "failed" || processing.status === "insufficient_data";
     return (
       <div role="status" aria-live="polite" className="rounded-xl border border-border bg-white p-6">
-        <p className="text-sm font-medium text-accent">File accepted</p>
+        <p className={`text-sm font-medium ${failed ? "text-muted" : "text-accent"}`}>
+          {failed ? "Upload received" : "File accepted"}
+        </p>
         <h2 className="mt-1 text-lg font-semibold">{STATUS_LABELS[processing.status] ?? "Processing"}</h2>
         {!done && <ProgressBar indeterminate label="Processing" />}
-        <p className="mt-4 text-sm leading-6 text-muted">
-          To keep your results private, the snapshot is shown only after you sign in. We will email a
-          secure sign-in link to the address you gave us. You can close this page.
-        </p>
+        {failed && (
+          <>
+            {processing.message && <p className="mt-3 text-sm text-danger">{processing.message}</p>}
+            <button
+              type="button"
+              onClick={() => setPhase({ kind: "idle" })}
+              className="mt-4 rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-accent-foreground"
+            >
+              Upload a different file
+            </button>
+          </>
+        )}
+        {!failed && (
+          <p className="mt-4 text-sm leading-6 text-muted">
+            To keep your results private, the snapshot is shown only after you sign in. We will email a
+            secure sign-in link to the address you gave us. You can close this page.
+          </p>
+        )}
       </div>
     );
   }

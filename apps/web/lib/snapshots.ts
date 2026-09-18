@@ -104,6 +104,19 @@ export interface SnapshotStatus {
   rowsRejected: number | null;
   warningCount: number;
   completed: boolean;
+  /** For a failed run: the worker's user-facing reason (our wording, never file contents). */
+  message: string | null;
+}
+
+interface StoredIssue {
+  severity?: string;
+  message?: string;
+}
+
+function firstErrorMessage(warnings: unknown): string | null {
+  if (!Array.isArray(warnings)) return null;
+  const error = (warnings as StoredIssue[]).find((w) => w?.severity === "error" && typeof w.message === "string");
+  return error?.message ?? null;
 }
 
 export async function getSnapshotStatus(tenantId: string, runId: string): Promise<SnapshotStatus | null> {
@@ -131,6 +144,7 @@ export async function getSnapshotStatus(tenantId: string, runId: string): Promis
     rowsRejected: run.rowsRejected,
     warningCount: Array.isArray(run.warnings) ? run.warnings.length : 0,
     completed: run.completedAt !== null,
+    message: run.status === "failed" || run.status === "insufficient_data" ? firstErrorMessage(run.warnings) : null,
   };
 }
 

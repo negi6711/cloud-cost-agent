@@ -45,6 +45,7 @@ export default async function SnapshotPage({ params }: PageProps<"/snapshot/[id]
       <section className="mt-8 rounded-xl border border-border p-6">
         <p className="text-sm font-medium text-accent">Status</p>
         <p className="mt-1 text-lg font-semibold">{STATUS_TEXT[status.status] ?? status.status}</p>
+        {status.message && <p className="mt-2 text-sm text-danger">{status.message}</p>}
         {!status.completed && (
           <p className="mt-2 text-sm text-muted">This page updates when you reload it.</p>
         )}

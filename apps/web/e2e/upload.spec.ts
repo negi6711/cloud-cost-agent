@@ -46,8 +46,8 @@ test("a valid CSV uploads with progress, is verified by the worker, and results 
   await page.getByRole("button", { name: "Upload and analyze" }).click();
 
   await expect(page.getByText("File accepted")).toBeVisible();
-  // The worker picks the job up (kicked by the web app) and verifies the file's integrity.
-  await expect(page.getByRole("heading", { name: "Reading your file" })).toBeVisible({ timeout: 20_000 });
+  // The worker picks the job up (kicked by the web app), verifies integrity and parses the file.
+  await expect(page.getByRole("heading", { name: "Analyzing cost changes" })).toBeVisible({ timeout: 20_000 });
   await expect(page.getByText(/the snapshot is shown only after you sign in/)).toBeVisible();
 });
 
@@ -66,4 +66,22 @@ test("a visitor can ask for a manual review instead of uploading", async ({ page
   await completeForm(page, `manual+${info.project.name}@example-co.com`);
   await page.getByRole("button", { name: "Request a manual review instead" }).click();
   await expect(page.getByRole("heading", { name: "Manual review requested" })).toBeVisible();
+});
+
+test("a CSV without a cost column is refused with an actionable reason", async ({ page }, info) => {
+  await completeForm(page, `nocost+${info.project.name}@example-co.com`);
+  await page.getByLabel("AWS billing export").setInputFiles({
+    name: "costs.csv",
+    mimeType: "text/csv",
+    buffer: Buffer.from(`Date,Service,Region
+2026-06-01,AWS Lambda,us-east-1
+2026-07-01,AWS Lambda,us-east-1
+# ${info.project.name}
+`),
+  });
+  await page.getByRole("button", { name: "Upload and analyze" }).click();
+  await expect(page.getByRole("heading", { name: "We could not process this file" })).toBeVisible({ timeout: 20_000 });
+  await expect(page.getByText(/Required columns are missing: cost/)).toBeVisible();
+  await page.getByRole("button", { name: "Upload a different file" }).click();
+  await expect(page.getByRole("button", { name: "Upload and analyze" })).toBeVisible();
 });

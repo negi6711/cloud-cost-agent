@@ -1,0 +1,5 @@
+Date,Service,Cost,Currency
+2026-06-01,Amazon Elastic Compute Cloud - Compute,4000.00,USD
+2026-06-01,Credit,-250.00,USD
+2026-07-01,Amazon Elastic Compute Cloud - Compute,4100.00,USD
+2026-07-01,Refund,(100.00),USD
