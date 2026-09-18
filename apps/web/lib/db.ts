@@ -52,3 +52,12 @@ export async function closeDb(): Promise<void> {
   globalForDb.ccaPool = undefined;
   globalForDb.ccaDb = undefined;
 }
+
+/** True for a Postgres unique_violation, whether raw or wrapped by the ORM. */
+export function isUniqueViolation(error: unknown): boolean {
+  for (let e: unknown = error, depth = 0; e && depth < 4; depth++) {
+    if ((e as { code?: string }).code === "23505") return true;
+    e = (e as { cause?: unknown }).cause;
+  }
+  return false;
+}

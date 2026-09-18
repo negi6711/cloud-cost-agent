@@ -1,8 +1,7 @@
 import "server-only";
 
-import { createHmac, timingSafeEqual } from "node:crypto";
-
 import { serverEnv } from "./env";
+import { signToken, verifyToken } from "./signing";
 
 /**
  * Short-lived, signed, httpOnly cookie that lets the browser that just submitted the qualification
@@ -10,6 +9,7 @@ import { serverEnv } from "./env";
  */
 export const LEAD_SESSION_COOKIE = "cca_lead";
 export const LEAD_SESSION_TTL_SECONDS = 2 * 60 * 60;
+const PURPOSE = "lead-session/v1";
 
 export interface LeadSession {
   leadId: string;
@@ -17,34 +17,14 @@ export interface LeadSession {
   exp: number; // unix seconds
 }
 
-function key(): Buffer {
-  // Domain-separated from other uses of AUTH_SECRET.
-  return createHmac("sha256", serverEnv().AUTH_SECRET).update("cca/lead-session/v1").digest();
-}
-
-function sign(payload: string): string {
-  return createHmac("sha256", key()).update(payload).digest("base64url");
-}
-
 export function encodeLeadSession(session: Omit<LeadSession, "exp">, now = Date.now()): string {
-  const full: LeadSession = { ...session, exp: Math.floor(now / 1000) + LEAD_SESSION_TTL_SECONDS };
-  const payload = Buffer.from(JSON.stringify(full)).toString("base64url");
-  return `${payload}.${sign(payload)}`;
+  return signToken(serverEnv().AUTH_SECRET, PURPOSE, session, LEAD_SESSION_TTL_SECONDS, now);
 }
 
 export function decodeLeadSession(token: string | undefined, now = Date.now()): LeadSession | null {
-  if (!token) return null;
-  const [payload, signature, extra] = token.split(".");
-  if (!payload || !signature || extra !== undefined) return null;
-  const expected = Buffer.from(sign(payload));
-  const given = Buffer.from(signature);
-  if (expected.length !== given.length || !timingSafeEqual(expected, given)) return null;
-  try {
-    const parsed = JSON.parse(Buffer.from(payload, "base64url").toString("utf8")) as LeadSession;
-    if (typeof parsed.leadId !== "string" || typeof parsed.tenantId !== "string") return null;
-    if (typeof parsed.exp !== "number" || parsed.exp * 1000 <= now) return null;
-    return parsed;
-  } catch {
+  const payload = verifyToken<Omit<LeadSession, "exp">>(serverEnv().AUTH_SECRET, PURPOSE, token, now);
+  if (!payload || typeof payload.leadId !== "string" || typeof payload.tenantId !== "string") {
     return null;
   }
+  return payload;
 }

@@ -28,7 +28,11 @@ npm run db:migrate:test       # applies db/migrations to cca_test
 
 ```bash
 npm run dev                   # web app on http://localhost:3000
+uv run python -m cca          # worker on http://localhost:8001 (WORKER_URL in .env points here)
 ```
+
+The web app enqueues a job row and "kicks" the worker over HTTP (HMAC-signed). The worker also polls,
+so it catches up if a kick is missed. Uploaded files land in `LOCAL_STORAGE_DIR` (`.local-storage/`).
 
 The npm scripts load the repo-root `.env` (`apps/web/scripts/next.mjs`); there is no
 `apps/web/.env.local`.
@@ -46,7 +50,8 @@ npm run lint
 npm run typecheck
 npm test                      # Vitest; integration tests use cca_test
 npm run build
-npm run test:e2e -w @cca/web  # Playwright, desktop + mobile, against a production build on cca_test
+npm run build                 # e2e runs against the production build
+npm run test:e2e -w @cca/web  # Playwright, desktop + mobile; starts web + worker on cca_test
 ```
 
 One-time for e2e: `npx playwright install chromium` in `apps/web`.
@@ -69,4 +74,3 @@ One-time for e2e: `npx playwright install chromium` in `apps/web`.
 | Jev | `JEV_PROVIDER=mock`, `JEV_ENABLED=false` | `JEV_PROVIDER=typesafe` with a server-side key |
 | Login emails | `EMAIL_DRIVER=dev-inbox` — links appear at `/dev/inbox` and in the console | Resend (needs a verified domain) |
 
-The worker run command is added here when the worker service lands (Day 2).

@@ -60,13 +60,19 @@ Consequences for MVP 0:
 
 Filled in as controls land; each links to its test.
 
-- [ ] Private bucket, expiring signed URLs
-- [ ] Server-side size limit, byte sniffing, no trust in extensions
+- [x] Private storage, expiring signed upload URLs bound to key + exact size — local driver tested
+  (`apps/web/tests/upload-flow.test.ts`); R2 presign signs `content-length`; bucket privacy and CORS
+  verified at staging setup (Day 6)
+- [x] Server-side size limit, byte sniffing, no trust in extensions or declared type —
+  `apps/web/lib/sniff.ts`, `apps/web/tests/sniff.test.ts`; worker re-verifies SHA-256 before use
 - [x] Tenant isolation (chokepoint + RLS) with cross-tenant tests — `db/migrations/0001_*.sql`,
   `apps/web/tests/tenant-isolation.test.ts`
-- [ ] Consent gate before external model processing
-- [ ] Redacted structured logs; no file content or prompts in logs — web done (`apps/web/lib/log.ts`),
-  worker pending
+- [ ] Consent gate before external model processing — consent captured per upload (opt-in, never
+  pre-ticked) and recorded on the run; enforcement lands with the Jev provider (Day 5)
+- [x] Redacted structured logs; no file content or prompts in logs — `apps/web/lib/log.ts`,
+  `worker/src/cca/logging_setup.py`
 - [ ] Model keys absent from web bundle and API responses — manual bundle scan clean on Day 1;
   automated check pending
 - [ ] Delete flow for source and derived data
+- [x] Worker endpoint authentication — HMAC over a timestamp, 5-minute skew window, no docs/OpenAPI
+  routes (`worker/tests/test_service.py`)

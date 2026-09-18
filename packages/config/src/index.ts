@@ -81,3 +81,16 @@ export type SnapshotRunStatus = (typeof SNAPSHOT_RUN_STATUSES)[number];
 export const AUDIT_ACTOR_TYPES = ["prospect", "admin", "worker", "system"] as const;
 export type AuditActorType = (typeof AUDIT_ACTOR_TYPES)[number];
 export * from "./qualification";
+
+/** Upload limits (docs/product-spec.md §6). The server enforces these; the browser only previews them. */
+export const MAX_UPLOAD_BYTES = 25 * 1024 * 1024;
+
+/**
+ * Versions that key a snapshot run. The worker defines the same constants; bump them when the parser
+ * or the Jev question set changes so re-processing creates a new run instead of reusing an old one.
+ */
+export const PARSER_VERSION = "ce-csv/1";
+export const QUESTION_SET_VERSION = "jev-qs/1";
+
+export const JOB_KINDS = ["snapshot.process"] as const;
+export type JobKind = (typeof JOB_KINDS)[number];

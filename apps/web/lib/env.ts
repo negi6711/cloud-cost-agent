@@ -1,13 +1,49 @@
 import "server-only";
 
+import { isAbsolute } from "node:path";
+
+import { MAX_UPLOAD_BYTES } from "@cca/config";
 import { z } from "zod";
 
-const serverEnvSchema = z.object({
-  NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
-  DATABASE_URL: z.url(),
-  AUTH_SECRET: z.string().min(32, "AUTH_SECRET must be at least 32 characters"),
-  APP_BASE_URL: z.url().default("http://localhost:3000"),
-});
+const secret = (name: string) => z.string().min(32, `${name} must be at least 32 characters`);
+
+const serverEnvSchema = z
+  .object({
+    NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
+    /** Deployment environment. NODE_ENV is "production" for any `next start`, even locally. */
+    APP_ENV: z.enum(["development", "test", "staging", "production"]).default("development"),
+    DATABASE_URL: z.url(),
+    AUTH_SECRET: secret("AUTH_SECRET"),
+    APP_BASE_URL: z.url().default("http://localhost:3000"),
+
+    STORAGE_DRIVER: z.enum(["local", "r2"]).default("local"),
+    LOCAL_STORAGE_DIR: z.string().optional(),
+    STORAGE_URL_SIGNING_SECRET: secret("STORAGE_URL_SIGNING_SECRET"),
+    R2_ACCOUNT_ID: z.string().optional(),
+    R2_ACCESS_KEY_ID: z.string().optional(),
+    R2_SECRET_ACCESS_KEY: z.string().optional(),
+    R2_BUCKET: z.string().optional(),
+    UPLOAD_MAX_BYTES: z.coerce.number().int().positive().max(MAX_UPLOAD_BYTES).default(MAX_UPLOAD_BYTES),
+    SIGNED_URL_TTL_SECONDS: z.coerce.number().int().min(30).max(900).default(300),
+
+    WORKER_URL: z.url().optional(),
+    WORKER_SHARED_SECRET: secret("WORKER_SHARED_SECRET"),
+  })
+  .superRefine((env, ctx) => {
+    if (env.STORAGE_DRIVER === "local") {
+      if (!env.LOCAL_STORAGE_DIR || !isAbsolute(env.LOCAL_STORAGE_DIR)) {
+        ctx.addIssue({ code: "custom", path: ["LOCAL_STORAGE_DIR"], message: "must be an absolute path" });
+      }
+      if (env.APP_ENV === "staging" || env.APP_ENV === "production") {
+        ctx.addIssue({ code: "custom", path: ["STORAGE_DRIVER"], message: "local storage is not allowed when hosted" });
+      }
+    }
+    if (env.STORAGE_DRIVER === "r2") {
+      for (const key of ["R2_ACCOUNT_ID", "R2_ACCESS_KEY_ID", "R2_SECRET_ACCESS_KEY", "R2_BUCKET"] as const) {
+        if (!env[key]) ctx.addIssue({ code: "custom", path: [key], message: "required for r2 storage" });
+      }
+    }
+  });
 
 export type ServerEnv = z.infer<typeof serverEnvSchema>;
 
@@ -25,4 +61,9 @@ export function serverEnv(): ServerEnv {
     cached = parsed.data;
   }
   return cached;
+}
+
+/** Tests only: forget the cached environment after changing process.env. */
+export function resetServerEnvForTests(): void {
+  cached = undefined;
 }

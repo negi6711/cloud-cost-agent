@@ -1,0 +1,2 @@
+ALTER TABLE "consent" ADD COLUMN "source_file_id" uuid;--> statement-breakpoint
+ALTER TABLE "consent" ADD CONSTRAINT "consent_source_file_fk" FOREIGN KEY ("tenant_id","source_file_id") REFERENCES "public"."source_file"("tenant_id","id") ON DELETE cascade ON UPDATE no action;

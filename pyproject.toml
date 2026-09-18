@@ -28,6 +28,7 @@ dev = [
     "ruff>=0.8",
     "mypy>=1.13",
     "boto3-stubs[s3]>=1.35",
+    "httpx>=0.28.1",
 ]
 
 [build-system]

@@ -66,6 +66,6 @@ test("a complete form continues to the upload step", async ({ page }, info) => {
   await page.getByRole("button", { name: "Continue to upload" }).click();
 
   await expect(page).toHaveURL(/\/upload$/);
-  await expect(page.getByRole("heading", { name: "Thanks — your details are saved." })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Upload your AWS billing export" })).toBeVisible();
   await expectNoHorizontalScroll(page);
 });

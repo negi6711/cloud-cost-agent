@@ -106,29 +106,6 @@ export const lead = pgTable(
   ],
 );
 
-export const consent = pgTable(
-  "consent",
-  {
-    id: id(),
-    tenantId: tenantId(),
-    leadId: uuid("lead_id").notNull(),
-    provider: text("provider").notNull(),
-    purpose: text("purpose").notNull(),
-    disclosureVersion: text("disclosure_version").notNull(),
-    granted: boolean("granted").notNull(),
-    createdAt: createdAt(),
-  },
-  (t) => [
-    foreignKey({
-      columns: [t.tenantId, t.leadId],
-      foreignColumns: [lead.tenantId, lead.id],
-      name: "consent_lead_fk",
-    }).onDelete("cascade"),
-    check("consent_provider_ck", oneOf("provider", CONSENT_PROVIDERS)),
-    index("consent_lead_idx").on(t.tenantId, t.leadId),
-  ],
-);
-
 // ------------------------------------------------------------ source files ---
 
 export const sourceFile = pgTable(
@@ -162,6 +139,38 @@ export const sourceFile = pgTable(
     check("source_file_size_ck", sql`${t.sizeBytes} > 0`),
     check("source_file_sha256_ck", sql`${t.sha256} ~ '^[0-9a-f]{64}$'`),
     index("source_file_lead_idx").on(t.tenantId, t.leadId),
+  ],
+);
+
+// ---------------------------------------------------------------- consent ---
+
+export const consent = pgTable(
+  "consent",
+  {
+    id: id(),
+    tenantId: tenantId(),
+    leadId: uuid("lead_id").notNull(),
+    /** Consent is collected per upload; null only for consents not tied to a file. */
+    sourceFileId: uuid("source_file_id"),
+    provider: text("provider").notNull(),
+    purpose: text("purpose").notNull(),
+    disclosureVersion: text("disclosure_version").notNull(),
+    granted: boolean("granted").notNull(),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    foreignKey({
+      columns: [t.tenantId, t.leadId],
+      foreignColumns: [lead.tenantId, lead.id],
+      name: "consent_lead_fk",
+    }).onDelete("cascade"),
+    foreignKey({
+      columns: [t.tenantId, t.sourceFileId],
+      foreignColumns: [sourceFile.tenantId, sourceFile.id],
+      name: "consent_source_file_fk",
+    }).onDelete("cascade"),
+    check("consent_provider_ck", oneOf("provider", CONSENT_PROVIDERS)),
+    index("consent_lead_idx").on(t.tenantId, t.leadId),
   ],
 );
 

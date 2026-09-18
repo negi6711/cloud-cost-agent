@@ -7,11 +7,13 @@
     "build": "node scripts/next.mjs build",
     "start": "node scripts/next.mjs start",
     "lint": "eslint",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "node scripts/next.mjs typegen && tsc --noEmit",
     "test": "vitest run",
     "test:e2e": "playwright test"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.1135.0",
+    "@aws-sdk/s3-request-presigner": "^3.1135.0",
     "@cca/config": "0.1.0",
     "@cca/db": "0.1.0",
     "@cca/domain": "0.1.0",

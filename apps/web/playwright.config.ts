@@ -1,12 +1,26 @@
+import { mkdirSync } from "node:fs";
+import path from "node:path";
+
 import { defineConfig, devices } from "@playwright/test";
 
 const PORT = Number(process.env.E2E_PORT ?? 3200);
+const WORKER_PORT = Number(process.env.E2E_WORKER_PORT ?? 8201);
+const REPO_ROOT = path.resolve(__dirname, "../..");
 
-// Runs against a production build started on its own port. The web server points at the test
-// database so e2e runs never write into cca_dev.
+// Web app and worker share one throwaway storage directory and the test database, so e2e runs
+// never touch cca_dev or .local-storage.
+const STORAGE_DIR = path.resolve(__dirname, "test-results/e2e-storage");
+mkdirSync(STORAGE_DIR, { recursive: true });
+
+const shared = {
+  ...process.env,
+  STORAGE_DRIVER: "local",
+  LOCAL_STORAGE_DIR: STORAGE_DIR.replaceAll("\\", "/"),
+} as Record<string, string>;
+
 export default defineConfig({
   testDir: "e2e",
-  outputDir: "test-results",
+  outputDir: "test-results/artifacts",
   fullyParallel: false,
   workers: 1,
   reporter: [["list"]],
@@ -18,11 +32,36 @@ export default defineConfig({
     { name: "desktop", use: { ...devices["Desktop Chrome"] } },
     { name: "mobile", use: { ...devices["Pixel 7"] } },
   ],
-  webServer: {
-    command: `node scripts/next.mjs start -p ${PORT}`,
-    url: `http://localhost:${PORT}`,
-    reuseExistingServer: false,
-    timeout: 120_000,
-    env: { E2E_USE_TEST_DATABASE: "1" },
-  },
+  webServer: [
+    {
+      command: `node scripts/next.mjs start -p ${PORT}`,
+      url: `http://localhost:${PORT}`,
+      reuseExistingServer: false,
+      timeout: 120_000,
+      env: { ...shared, E2E_USE_TEST_DATABASE: "1", WORKER_URL: `http://localhost:${WORKER_PORT}` },
+    },
+    {
+      command: "uv run python -m cca",
+      cwd: REPO_ROOT,
+      url: `http://localhost:${WORKER_PORT}/healthz`,
+      reuseExistingServer: false,
+      timeout: 120_000,
+      env: {
+        ...shared,
+        PORT: String(WORKER_PORT),
+        DATABASE_URL: process.env.TEST_DATABASE_URL ?? readTestDatabaseUrl(),
+        WORKER_ID: "worker-e2e",
+        WORKER_POLL_INTERVAL_SECONDS: "1",
+      },
+    },
+  ],
 });
+
+/** TEST_DATABASE_URL from the repo-root .env when it is not already in the environment. */
+function readTestDatabaseUrl(): string {
+  const envFile = path.join(REPO_ROOT, ".env");
+  process.loadEnvFile(envFile);
+  const url = process.env.TEST_DATABASE_URL;
+  if (!url) throw new Error("TEST_DATABASE_URL is required for e2e runs");
+  return url;
+}
