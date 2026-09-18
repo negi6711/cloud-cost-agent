@@ -53,10 +53,35 @@ def test_valid_export_is_parsed_and_recorded(seed, owner, app_conn, storage_dir,
     assert runner(app_conn, storage_dir, settings).drain() == 1
 
     run = run_row(owner, s.run_id)
-    assert run["status"] == "analyzing"
+    assert run["status"] == "completed" and run["completed_at"] is not None
     assert (run["rows_seen"], run["rows_accepted"], run["rows_rejected"]) == (3, 3, 0)
     assert (run["total_cost"], run["currency"]) == (Decimal("23013.75"), "USD")
-    assert run["completed_at"] is None
+    assert run["data_readiness_score"] == 85
+    assert run["summary"]["comparison"]["current_month"] == "2026-07"
+    assert run["explanation_provider"] == "template"
+    assert run["evidence_packet_version"] == "ep/1" and len(run["evidence_packet_sha256"]) == 64
+    # Seeded runs have no consent: classification is unavailable and says why.
+    assert run["model_status"] == "JEV_UNAVAILABLE_REVIEW_REQUIRED"
+
+    findings = owner.execute(
+        "SELECT rank, kind, final_category, category, jev_category, review_required, policy_reasons, model_status, "
+        "title, next_action, evidence, missing_evidence, observed_value FROM snapshot_finding "
+        "WHERE snapshot_run_id = %s ORDER BY rank", (s.run_id,)).fetchall()
+    assert [(f["rank"], f["kind"], f["final_category"]) for f in findings] == [
+        (1, "new_service", "REQUEST_EVIDENCE"), (2, "material_increase", "MONITOR")]
+    ecs = findings[0]
+    assert ecs["category"] == ecs["final_category"] and ecs["jev_category"] is None
+    assert ecs["review_required"] and ecs["policy_reasons"] == ["classification_unavailable:no_consent"]
+    assert ecs["observed_value"] == Decimal("1840.00")
+    assert ecs["title"] == "New service: Amazon Elastic Container Service"
+    assert {"text": "Billing data shows $1,840.00 in July 2026.", "refs": ["L5:C7"]} in ecs["evidence"]
+    assert ecs["missing_evidence"][0]["code"] == "owner_confirmation"
+
+    packets = owner.execute(
+        "SELECT evidence_id, version, sha256, packet FROM evidence_packet WHERE snapshot_run_id = %s", (s.run_id,)
+    ).fetchall()
+    assert len(packets) == 2 and all(p["version"] == "ep/1" for p in packets)
+    assert owner.execute("SELECT count(*) AS n FROM model_call").fetchone() == {"n": 0}  # nothing was sent
     assert file_row(owner, s.source_file_id) == {
         "status": "processed",
         "dimension": "service",
@@ -83,8 +108,29 @@ def test_hostile_labels_never_reach_stored_issues(seed, owner, app_conn, storage
     s = seed((FIXTURES / "prompt_injection_labels.csv").read_bytes())
     runner(app_conn, storage_dir, settings).drain()
     run = run_row(owner, s.run_id)
-    assert run["status"] == "analyzing"
+    assert run["status"] == "completed"
     assert "Ignore previous instructions" not in str(run["warnings"])
+    packets = owner.execute("SELECT packet FROM evidence_packet WHERE snapshot_run_id = %s", (s.run_id,)).fetchall()
+    assert packets and "Ignore previous instructions" not in str([p["packet"] for p in packets])
+
+
+def test_single_month_export_abstains_with_a_reason(seed, owner, app_conn, storage_dir, settings) -> None:  # type: ignore[no-untyped-def]
+    s = seed(b"Service,EC2($)\n2026-07-01,100\n")
+    runner(app_conn, storage_dir, settings).drain()
+    run = run_row(owner, s.run_id)
+    assert run["status"] == "insufficient_data" and run["completed_at"] is not None
+    abstain = next(w for w in run["warnings"] if w["code"] == "no_comparison")
+    assert abstain["severity"] == "error" and "two consecutive complete months" in abstain["message"]
+    assert owner.execute("SELECT count(*) AS n FROM snapshot_finding").fetchone() == {"n": 0}
+
+
+def test_retrying_a_completed_run_changes_nothing(seed, owner, app_conn, storage_dir, settings) -> None:  # type: ignore[no-untyped-def]
+    s = seed((FIXTURES / "valid_cost_explorer.csv").read_bytes())
+    runner(app_conn, storage_dir, settings).drain()
+    owner.execute("UPDATE job SET status = 'queued', run_after = now() WHERE id = %s", (s.job_id,))
+    runner(app_conn, storage_dir, settings).drain()
+    assert owner.execute("SELECT count(*) AS n FROM snapshot_finding").fetchone() == {"n": 2}
+    assert owner.execute("SELECT count(*) AS n FROM evidence_packet").fetchone() == {"n": 2}
 
 
 def test_unusable_file_ends_the_run_with_an_actionable_message(seed, owner, app_conn, storage_dir, settings) -> None:  # type: ignore[no-untyped-def]

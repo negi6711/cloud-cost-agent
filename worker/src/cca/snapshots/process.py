@@ -1,7 +1,5 @@
-"""The `snapshot.process` job: load the uploaded file for a run and analyze it.
-
-Stages so far: load (integrity check) -> parse (normalize, data-quality issues). Analysis, the
-evidence packet, Jev classification and the policy gate are added behind this entry point.
+"""The `snapshot.process` job: load -> parse -> analyze (detect, readiness, evidence packets,
+model classification, policy gate, explanations) -> persist.
 
 Parsed rows live only in memory for the duration of the job. What is persisted is aggregate:
 counts, totals, the detected period, and issues whose messages are ours, never file contents.
@@ -22,6 +20,10 @@ from cca.db import Connection, tenant_transaction
 from cca.jobs.errors import PermanentJobError, RetryableJobError
 from cca.jobs.queue import Job
 from cca.parsers import ParseError, ParseResult, parse_billing_export
+from cca.providers.base import DecisionModelProvider, UnavailableProvider, UnavailableReason
+from cca.snapshots.analyze import analyze
+from cca.snapshots.explain import ExplanationProvider, TemplateExplanationProvider
+from cca.snapshots.persist import record_analysis
 from cca.storage import ObjectMissingError, ObjectStore, ObjectTooLargeError
 
 log = structlog.get_logger("cca.snapshots")
@@ -39,22 +41,53 @@ class IntegrityError(PermanentJobError):
 
 
 Clock = Callable[[], date]
+# consent_basis of the run -> the provider to use. Never returns a different model silently.
+ProviderFactory = Callable[[str | None], DecisionModelProvider]
+
+ABSTAIN_ISSUE = {
+    "code": "no_comparison",
+    "severity": "error",
+    "stage": "analyze",
+    "message": "At least two consecutive complete months are needed to compare periods. "
+    "Export a longer range (for example, the last three full months) and upload it again.",
+}
 
 
 def utc_today() -> date:
     return datetime.now(UTC).date()
 
 
-def make_handler(store: ObjectStore, max_bytes: int, today: Clock = utc_today) -> Callable[[Connection, Job], None]:
+def unavailable_provider_factory(jev_enabled: bool) -> ProviderFactory:
+    """Day 4: classification is not wired yet. Consent is checked first, always."""
+
+    def factory(consent_basis: str | None) -> DecisionModelProvider:
+        if consent_basis != "typesafe:granted":
+            return UnavailableProvider(UnavailableReason.NO_CONSENT)
+        return UnavailableProvider(UnavailableReason.NOT_CONFIGURED if jev_enabled else UnavailableReason.DISABLED)
+
+    return factory
+
+
+def make_handler(
+    store: ObjectStore,
+    max_bytes: int,
+    today: Clock = utc_today,
+    providers: ProviderFactory | None = None,
+    explainer: ExplanationProvider | None = None,
+    low_confidence: float = 0.5,
+) -> Callable[[Connection, Job], None]:
+    provider_for = providers or unavailable_provider_factory(jev_enabled=False)
+    explain = explainer or TemplateExplanationProvider()
+
     def handle(conn: Connection, job: Job) -> None:
-        process_snapshot(conn, job, store, max_bytes, today)
+        process_snapshot(conn, job, store, max_bytes, today, provider_for, explain, low_confidence)
 
     return handle
 
 
 def _load_run(conn: Connection, run_id: UUID) -> dict[str, Any]:
     row = conn.execute(
-        "SELECT r.id, r.status, r.source_file_id, f.storage_key, f.sha256, f.size_bytes "
+        "SELECT r.id, r.status, r.source_file_id, r.consent_basis, f.storage_key, f.sha256, f.size_bytes "
         "FROM snapshot_run r JOIN source_file f "
         "  ON f.tenant_id = r.tenant_id AND f.id = r.source_file_id "
         "WHERE r.id = %s",
@@ -85,7 +118,14 @@ def _load_issue(code: str) -> dict[str, Any]:
 
 
 def process_snapshot(
-    conn: Connection, job: Job, store: ObjectStore, max_bytes: int, today: Clock = utc_today
+    conn: Connection,
+    job: Job,
+    store: ObjectStore,
+    max_bytes: int,
+    today: Clock = utc_today,
+    provider_for: ProviderFactory | None = None,
+    explainer: ExplanationProvider | None = None,
+    low_confidence: float = 0.5,
 ) -> None:
     run_id = UUID(str(job.payload["snapshotRunId"]))
     with tenant_transaction(conn, job.tenant_id):
@@ -119,27 +159,39 @@ def process_snapshot(
         return
     finally:
         del data
+    parse_warnings = [i.to_json() for i in result.issues]
+    _record_parse(conn, job, run, result, parse_warnings)
 
-    _record_parse(conn, job, run, result)
+    # ---- analyze (classification happens inside, through the provider for this run's consent)
+    provider = (provider_for or unavailable_provider_factory(jev_enabled=False))(run["consent_basis"])
+    explain = explainer or TemplateExplanationProvider()
+    analysis = analyze(result, run["sha256"], provider, explain, low_confidence)
+    warnings = parse_warnings + ([ABSTAIN_ISSUE] if analysis.abstained else [])
+
+    with tenant_transaction(conn, job.tenant_id):
+        record_analysis(conn, job.tenant_id, run_id, analysis, warnings, explain.name)
     log.info(
-        "snapshot.parsed",
+        "snapshot.analyzed",
         run_id=str(run_id),
-        layout=str(result.layout),
-        lines_seen=result.stats.lines_seen,
-        lines_rejected=result.stats.lines_rejected,
-        issues=len(result.issues),
+        findings=len(analysis.findings),
+        readiness=analysis.readiness.score,
+        model_status=str(analysis.model_status) if analysis.model_status else None,
+        abstained=analysis.abstained,
     )
 
 
-def _record_parse(conn: Connection, job: Job, run: dict[str, Any], result: ParseResult) -> None:
+def _record_parse(
+    conn: Connection, job: Job, run: dict[str, Any], result: ParseResult, warnings: list[dict[str, Any]]
+) -> None:
     s = result.stats
     with tenant_transaction(conn, job.tenant_id):
+        # warnings are replaced, not appended, so a retried job never duplicates them
         conn.execute(
-            "UPDATE snapshot_run SET rows_seen = %s, rows_accepted = %s, rows_rejected = %s, "
-            "total_cost = %s, currency = %s WHERE id = %s",
-            (s.lines_seen, s.lines_accepted, s.lines_rejected, result.total_cost, result.currency, run["id"]),
+            "UPDATE snapshot_run SET status = 'analyzing', rows_seen = %s, rows_accepted = %s, rows_rejected = %s, "
+            "total_cost = %s, currency = %s, warnings = %s WHERE id = %s",
+            (s.lines_seen, s.lines_accepted, s.lines_rejected, result.total_cost, result.currency,
+             Jsonb(warnings), run["id"]),
         )
-        _set_status(conn, run["id"], "analyzing", [i.to_json() for i in result.issues])
         conn.execute(
             "UPDATE source_file SET status = 'processed', dimension = %s, "
             "detected_period_start = %s, detected_period_end = %s WHERE id = %s",

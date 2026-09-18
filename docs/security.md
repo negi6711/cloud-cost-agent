@@ -74,6 +74,11 @@ Filled in as controls land; each links to its test.
 - [ ] Model keys absent from web bundle and API responses — manual bundle scan clean on Day 1;
   automated check pending
 - [ ] Delete flow for source and derived data
+- [x] Evidence packets minimized: account/tag values aliased, IDs and emails masked,
+  instruction-like and formula labels withheld, no rule outcomes (`worker/tests/test_analysis.py`)
+- [x] Billing-only data can never produce RESIZE/DELETE/STOP/BUY: category enum + DB CHECK + policy
+  gate; explanations tested for destructive wording (`worker/tests/test_analysis.py`,
+  `worker/tests/test_policy_gate.py`)
 - [x] Results only behind email magic-link login (Better Auth): links are single-use, expire in 30
   minutes, tokens stored hashed; links are sent only to known leads or admins, and the response never
   reveals which (`apps/web/tests/auth.test.ts`, `apps/web/e2e/auth.spec.ts`)

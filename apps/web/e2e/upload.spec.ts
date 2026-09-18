@@ -46,8 +46,8 @@ test("a valid CSV uploads with progress, is verified by the worker, and results 
   await page.getByRole("button", { name: "Upload and analyze" }).click();
 
   await expect(page.getByText("File accepted")).toBeVisible();
-  // The worker picks the job up (kicked by the web app), verifies integrity and parses the file.
-  await expect(page.getByRole("heading", { name: "Analyzing cost changes" })).toBeVisible({ timeout: 20_000 });
+  // The worker picks the job up (kicked by the web app), verifies, parses and analyzes the file.
+  await expect(page.getByRole("heading", { name: "Snapshot ready" })).toBeVisible({ timeout: 20_000 });
   await expect(page.getByText(/the snapshot is shown only after you sign in/)).toBeVisible();
 });
 
@@ -84,4 +84,17 @@ test("a CSV without a cost column is refused with an actionable reason", async (
   await expect(page.getByText(/Required columns are missing: cost/)).toBeVisible();
   await page.getByRole("button", { name: "Upload a different file" }).click();
   await expect(page.getByRole("button", { name: "Upload and analyze" })).toBeVisible();
+});
+
+test("a single-month export ends with a clear 'not enough data' reason", async ({ page }, info) => {
+  await completeForm(page, `onemonth+${info.project.name}@example-co.com`);
+  await page.getByLabel("AWS billing export").setInputFiles({
+    name: "one-month.csv",
+    mimeType: "text/csv",
+    // Unique trailing line per project so duplicate detection never merges the two runs.
+    buffer: Buffer.from(`Service,Amazon EC2($)\n2026-07-01,100\n# ${info.project.name}\n`),
+  });
+  await page.getByRole("button", { name: "Upload and analyze" }).click();
+  await expect(page.getByRole("heading", { name: "Not enough data for a snapshot" })).toBeVisible({ timeout: 20_000 });
+  await expect(page.getByText(/two consecutive complete months/)).toBeVisible();
 });

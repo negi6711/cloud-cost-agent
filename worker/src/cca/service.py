@@ -20,7 +20,7 @@ from fastapi import FastAPI, Header, HTTPException, Response
 from cca.db import connect
 from cca.jobs.runner import Handler, Runner
 from cca.settings import Settings
-from cca.snapshots.process import make_handler
+from cca.snapshots.process import make_handler, unavailable_provider_factory
 from cca.storage import object_store
 
 log = structlog.get_logger("cca.service")
@@ -80,7 +80,14 @@ class JobLoop:
 
 def default_handlers(settings: Settings) -> dict[str, Handler]:
     store = object_store(settings)
-    return {"snapshot.process": make_handler(store, settings.upload_max_bytes)}
+    return {
+        "snapshot.process": make_handler(
+            store,
+            settings.upload_max_bytes,
+            providers=unavailable_provider_factory(settings.jev_enabled),
+            low_confidence=settings.jev_low_confidence_threshold,
+        )
+    }
 
 
 def create_app(settings: Settings, *, start_loop: bool = True) -> FastAPI:

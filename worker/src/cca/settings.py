@@ -33,6 +33,9 @@ class Settings(BaseSettings):
     r2_bucket: str | None = Field(None, alias="R2_BUCKET")
     upload_max_bytes: int = Field(MAX_UPLOAD_BYTES, alias="UPLOAD_MAX_BYTES", gt=0, le=MAX_UPLOAD_BYTES)
 
+    jev_enabled: bool = Field(False, alias="JEV_ENABLED")
+    jev_low_confidence_threshold: float = Field(0.5, alias="JEV_LOW_CONFIDENCE_THRESHOLD", ge=0, le=1)
+
     worker_id: str = Field("worker-local", alias="WORKER_ID")
     poll_interval_seconds: float = Field(5.0, alias="WORKER_POLL_INTERVAL_SECONDS", gt=0)
     lease_seconds: int = Field(300, alias="WORKER_LEASE_SECONDS", ge=30)
