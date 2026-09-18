@@ -74,5 +74,12 @@ Filled in as controls land; each links to its test.
 - [ ] Model keys absent from web bundle and API responses — manual bundle scan clean on Day 1;
   automated check pending
 - [ ] Delete flow for source and derived data
+- [x] Results only behind email magic-link login (Better Auth): links are single-use, expire in 30
+  minutes, tokens stored hashed; links are sent only to known leads or admins, and the response never
+  reveals which (`apps/web/tests/auth.test.ts`, `apps/web/e2e/auth.spec.ts`)
+- [x] A signed-in lead sees only their own workspaces; another lead's snapshot URL returns 404
+  (`apps/web/e2e/auth.spec.ts`)
+- [x] Per-IP rate limiting on sign-in and verification (disabled only when `APP_ENV=test`)
+- [x] Emails carry links only, never billing content
 - [x] Worker endpoint authentication — HMAC over a timestamp, 5-minute skew window, no docs/OpenAPI
   routes (`worker/tests/test_service.py`)

@@ -13,7 +13,12 @@ if (!process.env.TEST_DATABASE_URL || !process.env.TEST_DATABASE_MIGRATION_URL) 
 process.env.DATABASE_URL = process.env.TEST_DATABASE_URL;
 process.env.AUTH_SECRET ??= "test-secret-test-secret-test-secret-00";
 
-// Storage in a throwaway directory; no worker kicks unless a test opts in.
+// Storage and email in throwaway directories; no worker kicks unless a test opts in.
+process.env.APP_ENV = "test";
+process.env.APP_BASE_URL = "http://localhost:3000";
 process.env.STORAGE_DRIVER = "local";
 process.env.LOCAL_STORAGE_DIR = mkdtempSync(path.join(tmpdir(), "cca-storage-"));
+process.env.EMAIL_DRIVER = "dev-inbox";
+process.env.DEV_INBOX_DIR = mkdtempSync(path.join(tmpdir(), "cca-inbox-"));
+process.env.ADMIN_EMAILS = "founder@admin.test";
 delete process.env.WORKER_URL;

@@ -28,6 +28,20 @@ const serverEnvSchema = z
 
     WORKER_URL: z.url().optional(),
     WORKER_SHARED_SECRET: secret("WORKER_SHARED_SECRET"),
+
+    ADMIN_EMAILS: z
+      .string()
+      .default("")
+      .transform((v) =>
+        v
+          .split(",")
+          .map((e) => e.trim().toLowerCase())
+          .filter(Boolean),
+      ),
+    EMAIL_DRIVER: z.enum(["dev-inbox", "resend"]).default("dev-inbox"),
+    DEV_INBOX_DIR: z.string().optional(),
+    RESEND_API_KEY: z.string().optional(),
+    EMAIL_FROM: z.string().optional(),
   })
   .superRefine((env, ctx) => {
     if (env.STORAGE_DRIVER === "local") {
@@ -37,6 +51,18 @@ const serverEnvSchema = z
       if (env.APP_ENV === "staging" || env.APP_ENV === "production") {
         ctx.addIssue({ code: "custom", path: ["STORAGE_DRIVER"], message: "local storage is not allowed when hosted" });
       }
+    }
+    const hosted = env.APP_ENV === "staging" || env.APP_ENV === "production";
+    if (env.EMAIL_DRIVER === "dev-inbox") {
+      if (hosted) {
+        ctx.addIssue({ code: "custom", path: ["EMAIL_DRIVER"], message: "the dev inbox is not allowed when hosted" });
+      }
+      if (!env.DEV_INBOX_DIR || !isAbsolute(env.DEV_INBOX_DIR)) {
+        ctx.addIssue({ code: "custom", path: ["DEV_INBOX_DIR"], message: "must be an absolute path" });
+      }
+    }
+    if (env.EMAIL_DRIVER === "resend" && (!env.RESEND_API_KEY || !env.EMAIL_FROM)) {
+      ctx.addIssue({ code: "custom", path: ["RESEND_API_KEY"], message: "RESEND_API_KEY and EMAIL_FROM are required" });
     }
     if (env.STORAGE_DRIVER === "r2") {
       for (const key of ["R2_ACCOUNT_ID", "R2_ACCESS_KEY_ID", "R2_SECRET_ACCESS_KEY", "R2_BUCKET"] as const) {

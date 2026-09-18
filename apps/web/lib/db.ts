@@ -24,6 +24,14 @@ function db(): Db {
 }
 
 /**
+ * Connection for identity tables (Better Auth) and the narrow SECURITY DEFINER lookups.
+ * Tenant tables are invisible through it: without app.tenant_id, RLS returns no rows.
+ */
+export function identityDb(): Db {
+  return db();
+}
+
+/**
  * The only way application code touches tenant data. Runs `fn` in a transaction whose
  * `app.tenant_id` is set, so Postgres row-level security filters every statement to that tenant.
  */

@@ -12,6 +12,7 @@ if (existsSync(".env") && !force) {
 const out = readFileSync(".env.example", "utf8")
   .replaceAll("replace-with-32+-random-bytes", () => randomBytes(32).toString("base64url"))
   // The web app and the worker run from different directories; an absolute path removes ambiguity.
-  .replace(/^LOCAL_STORAGE_DIR=.*$/m, `LOCAL_STORAGE_DIR=${resolve(".local-storage").replaceAll("\\", "/")}`);
+  .replace(/^LOCAL_STORAGE_DIR=.*$/m, `LOCAL_STORAGE_DIR=${resolve(".local-storage").replaceAll("\\", "/")}`)
+  .replace(/^DEV_INBOX_DIR=.*$/m, `DEV_INBOX_DIR=${resolve(".dev-inbox").replaceAll("\\", "/")}`);
 writeFileSync(".env", out);
 console.log("wrote .env with fresh local secrets");

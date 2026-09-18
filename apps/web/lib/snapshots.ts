@@ -5,7 +5,7 @@ import { auditEvent, consent, job, snapshotRun, sourceFile } from "@cca/db";
 import type { CreateSnapshotInput } from "@cca/domain";
 import { and, desc, eq } from "drizzle-orm";
 
-import { withTenant } from "./db";
+import { withAdmin, withTenant } from "./db";
 import { UserFacingError } from "./errors";
 
 export interface CreatedSnapshot {
@@ -132,4 +132,57 @@ export async function getSnapshotStatus(tenantId: string, runId: string): Promis
     warningCount: Array.isArray(run.warnings) ? run.warnings.length : 0,
     completed: run.completedAt !== null,
   };
+}
+
+export interface SnapshotSummary {
+  id: string;
+  status: SnapshotRunStatus;
+  createdAt: Date;
+  filename: string;
+}
+
+/** Runs across the given workspaces, newest first. Each tenant is read under its own RLS context. */
+export async function listSnapshots(tenantIds: string[]): Promise<SnapshotSummary[]> {
+  const all = await Promise.all(
+    tenantIds.map((tenantId) =>
+      withTenant(tenantId, (tx) =>
+        tx
+          .select({
+            id: snapshotRun.id,
+            status: snapshotRun.status,
+            createdAt: snapshotRun.createdAt,
+            filename: sourceFile.originalFilename,
+          })
+          .from(snapshotRun)
+          .innerJoin(
+            sourceFile,
+            and(eq(sourceFile.tenantId, snapshotRun.tenantId), eq(sourceFile.id, snapshotRun.sourceFileId)),
+          ),
+      ),
+    ),
+  );
+  return all
+    .flat()
+    .map((r) => ({ ...r, status: r.status as SnapshotRunStatus }))
+    .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+}
+
+/** Find a run the viewer may see: in one of their workspaces. Returns null otherwise. */
+export async function findViewableSnapshot(
+  tenantIds: string[],
+  runId: string,
+): Promise<{ tenantId: string; status: SnapshotStatus } | null> {
+  for (const tenantId of tenantIds) {
+    const status = await getSnapshotStatus(tenantId, runId);
+    if (status) return { tenantId, status };
+  }
+  return null;
+}
+
+/** Admin only (caller must have checked): the tenant that owns a run, across all workspaces. */
+export async function snapshotTenantForAdmin(runId: string): Promise<string | null> {
+  const [row] = await withAdmin((tx) =>
+    tx.select({ tenantId: snapshotRun.tenantId }).from(snapshotRun).where(eq(snapshotRun.id, runId)).limit(1),
+  );
+  return row?.tenantId ?? null;
 }

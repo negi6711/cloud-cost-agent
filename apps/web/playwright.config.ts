@@ -10,10 +10,13 @@ const REPO_ROOT = path.resolve(__dirname, "../..");
 // Web app and worker share one throwaway storage directory and the test database, so e2e runs
 // never touch cca_dev or .local-storage.
 const STORAGE_DIR = path.resolve(__dirname, "test-results/e2e-storage");
+const INBOX_DIR = path.resolve(__dirname, "test-results/e2e-inbox");
 mkdirSync(STORAGE_DIR, { recursive: true });
+mkdirSync(INBOX_DIR, { recursive: true });
 
 const shared = {
   ...process.env,
+  APP_ENV: "test",
   STORAGE_DRIVER: "local",
   LOCAL_STORAGE_DIR: STORAGE_DIR.replaceAll("\\", "/"),
 } as Record<string, string>;
@@ -38,7 +41,15 @@ export default defineConfig({
       url: `http://localhost:${PORT}`,
       reuseExistingServer: false,
       timeout: 120_000,
-      env: { ...shared, E2E_USE_TEST_DATABASE: "1", WORKER_URL: `http://localhost:${WORKER_PORT}` },
+      env: {
+        ...shared,
+        E2E_USE_TEST_DATABASE: "1",
+        WORKER_URL: `http://localhost:${WORKER_PORT}`,
+        APP_BASE_URL: `http://localhost:${PORT}`,
+        EMAIL_DRIVER: "dev-inbox",
+        DEV_INBOX_DIR: INBOX_DIR.replaceAll("\\", "/"),
+        ADMIN_EMAILS: "founder@admin.test",
+      },
     },
     {
       command: "uv run python -m cca",

@@ -15,5 +15,5 @@ export async function withOwner<T>(fn: (client: pg.Client) => Promise<T>): Promi
 }
 
 export async function resetTenants(): Promise<void> {
-  await withOwner((c) => c.query("TRUNCATE tenant, audit_event CASCADE"));
+  await withOwner((c) => c.query('TRUNCATE tenant, audit_event, "user", verification CASCADE'));
 }

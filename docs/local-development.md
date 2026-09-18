@@ -31,6 +31,9 @@ npm run dev                   # web app on http://localhost:3000
 uv run python -m cca          # worker on http://localhost:8001 (WORKER_URL in .env points here)
 ```
 
+Sign-in emails go to the dev inbox: open http://localhost:3000/dev/inbox and click the link.
+To use the admin view, put your own email in `ADMIN_EMAILS` in `.env` (comma-separated).
+
 The web app enqueues a job row and "kicks" the worker over HTTP (HMAC-signed). The worker also polls,
 so it catches up if a kick is missed. Uploaded files land in `LOCAL_STORAGE_DIR` (`.local-storage/`).
 
