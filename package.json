@@ -3,7 +3,8 @@
   "private": true,
   "workspaces": [
     "apps/*",
-    "packages/*"
+    "packages/*",
+    "db"
   ],
   "engines": {
     "node": ">=20"
@@ -13,7 +14,12 @@
     "build": "npm run build -w @cca/web",
     "lint": "npm run lint -w @cca/web",
     "typecheck": "npm run typecheck --workspaces --if-present",
-    "test": "npm run test --workspaces --if-present"
+    "test": "npm run test --workspaces --if-present",
+    "db:setup-local": "npm run setup-local -w @cca/db",
+    "db:generate": "npm run generate -w @cca/db",
+    "db:migrate": "npm run migrate -w @cca/db --",
+    "db:migrate:test": "npm run migrate -w @cca/db -- --test",
+    "env:init": "node scripts/init-env.mjs"
   },
   "devDependencies": {
     "typescript": "^5.9.3"

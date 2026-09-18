@@ -1,2 +1,2 @@
-// Zod request/response schemas shared by the web app. Populated from Day 1 (lead form onward).
-export {};
+// Zod request/response schemas shared by the web app.
+export * from "./lead";

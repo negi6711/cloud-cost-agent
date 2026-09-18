@@ -62,8 +62,11 @@ Filled in as controls land; each links to its test.
 
 - [ ] Private bucket, expiring signed URLs
 - [ ] Server-side size limit, byte sniffing, no trust in extensions
-- [ ] Tenant isolation (chokepoint + RLS) with cross-tenant tests
+- [x] Tenant isolation (chokepoint + RLS) with cross-tenant tests — `db/migrations/0001_*.sql`,
+  `apps/web/tests/tenant-isolation.test.ts`
 - [ ] Consent gate before external model processing
-- [ ] Redacted structured logs; no file content or prompts in logs
-- [ ] Model keys absent from web bundle and API responses
+- [ ] Redacted structured logs; no file content or prompts in logs — web done (`apps/web/lib/log.ts`),
+  worker pending
+- [ ] Model keys absent from web bundle and API responses — manual bundle scan clean on Day 1;
+  automated check pending
 - [ ] Delete flow for source and derived data

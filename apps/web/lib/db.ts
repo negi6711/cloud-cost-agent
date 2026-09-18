@@ -1,0 +1,54 @@
+import "server-only";
+
+import { schema } from "@cca/db";
+import { sql } from "drizzle-orm";
+import { drizzle, type NodePgDatabase } from "drizzle-orm/node-postgres";
+import { Pool } from "pg";
+
+import { serverEnv } from "./env";
+
+export type Db = NodePgDatabase<typeof schema>;
+export type Tx = Parameters<Parameters<Db["transaction"]>[0]>[0];
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+const globalForDb = globalThis as unknown as { ccaPool?: Pool; ccaDb?: Db };
+
+function db(): Db {
+  if (!globalForDb.ccaDb) {
+    // One pool per process; cached on globalThis so dev hot-reloads don't leak connections.
+    globalForDb.ccaPool = new Pool({ connectionString: serverEnv().DATABASE_URL, max: 10 });
+    globalForDb.ccaDb = drizzle(globalForDb.ccaPool, { schema });
+  }
+  return globalForDb.ccaDb;
+}
+
+/**
+ * The only way application code touches tenant data. Runs `fn` in a transaction whose
+ * `app.tenant_id` is set, so Postgres row-level security filters every statement to that tenant.
+ */
+export async function withTenant<T>(tenantId: string, fn: (tx: Tx) => Promise<T>): Promise<T> {
+  if (!UUID_RE.test(tenantId)) throw new Error("withTenant: tenantId must be a UUID");
+  return db().transaction(async (tx) => {
+    await tx.execute(sql`select set_config('app.tenant_id', ${tenantId}, true)`);
+    return fn(tx);
+  });
+}
+
+/**
+ * Cross-tenant access for founder admin routes. Callers must have verified the admin session
+ * before calling; this function does not authenticate.
+ */
+export async function withAdmin<T>(fn: (tx: Tx) => Promise<T>): Promise<T> {
+  return db().transaction(async (tx) => {
+    await tx.execute(sql`select set_config('app.is_admin', 'on', true)`);
+    return fn(tx);
+  });
+}
+
+/** Close the pool (tests and graceful shutdown). */
+export async function closeDb(): Promise<void> {
+  await globalForDb.ccaPool?.end();
+  globalForDb.ccaPool = undefined;
+  globalForDb.ccaDb = undefined;
+}

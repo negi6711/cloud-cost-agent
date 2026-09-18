@@ -39,3 +39,45 @@ export const DECISION_CATEGORY_LABELS: Record<DecisionCategory, string> = {
   MONITOR: "Monitor",
   ESCALATE: "Escalate",
 };
+
+export const LEAD_STATUSES = [
+  "new",
+  "needs_clarification",
+  "snapshot_sent",
+  "pilot_requested",
+  "not_qualified",
+  "follow_up_later",
+] as const;
+export type LeadStatus = (typeof LEAD_STATUSES)[number];
+
+/** External processors that may receive a minimized evidence packet, each behind its own consent. */
+export const CONSENT_PROVIDERS = ["typesafe", "openai"] as const;
+export type ConsentProvider = (typeof CONSENT_PROVIDERS)[number];
+
+export const SOURCE_FILE_STATUSES = [
+  "uploaded",
+  "validating",
+  "rejected",
+  "accepted",
+  "processed",
+  "failed",
+] as const;
+export type SourceFileStatus = (typeof SOURCE_FILE_STATUSES)[number];
+
+export const JOB_STATUSES = ["queued", "running", "succeeded", "failed", "dead"] as const;
+export type JobStatus = (typeof JOB_STATUSES)[number];
+
+export const SNAPSHOT_RUN_STATUSES = [
+  "queued",
+  "parsing",
+  "analyzing",
+  "classifying",
+  "completed",
+  "insufficient_data",
+  "failed",
+] as const;
+export type SnapshotRunStatus = (typeof SNAPSHOT_RUN_STATUSES)[number];
+
+export const AUDIT_ACTOR_TYPES = ["prospect", "admin", "worker", "system"] as const;
+export type AuditActorType = (typeof AUDIT_ACTOR_TYPES)[number];
+export * from "./qualification";
