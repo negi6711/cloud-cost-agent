@@ -1,0 +1,71 @@
+[project]
+name = "cca-worker"
+version = "0.1.0"
+description = "Deterministic billing analysis and Jev classification worker for Cloud Cost Decision Snapshot"
+requires-python = ">=3.12"
+dependencies = [
+    # analysis
+    "polars>=1.44,<2",
+    "pyarrow>=21",
+    "pydantic>=2.12",
+    "pydantic-settings>=2.6",
+    # decision model (TypeSafe Jev) - imported only from cca/providers/jev.py
+    "typesafe-sdk>=0.7,<0.8",
+    # persistence and storage
+    "psycopg[binary]>=3.2",
+    "boto3>=1.35",  # S3 API client for Cloudflare R2; never pointed at AWS
+    # service shell (/healthz, /internal/kick)
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.32",
+    # infra
+    "structlog>=24.4",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.3",
+    "pytest-cov>=6.0",
+    "ruff>=0.8",
+    "mypy>=1.13",
+    "boto3-stubs[s3]>=1.35",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["worker/src/cca"]
+
+# ---------------------------------------------------------------- tooling ---
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+src = ["worker/src", "worker/tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "BLE", "SIM", "N", "ASYNC", "S", "RUF"]
+ignore = [
+    "S101",  # assert is fine in tests
+    "E501",  # line length handled by formatter
+]
+
+[tool.ruff.lint.per-file-ignores]
+"worker/tests/**" = ["S105", "S106"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+warn_unreachable = true
+plugins = ["pydantic.mypy"]
+mypy_path = "worker/src"
+files = ["worker/src", "worker/tests"]
+
+[tool.pytest.ini_options]
+testpaths = ["worker/tests"]
+pythonpath = ["worker/src"]
+addopts = "-q --strict-markers"
+markers = [
+    "integration: needs a live local Postgres",
+]

@@ -1,0 +1,38 @@
+# dependencies
+node_modules/
+.venv/
+
+# build output
+.next/
+out/
+dist/
+build/
+*.tsbuildinfo
+next-env.d.ts
+
+# python caches
+__pycache__/
+*.pyc
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# local secrets and data — never commit
+.env
+.env.*
+!.env.example
+.local-storage/
+.dev-inbox/
+*.pem
+
+# test output
+playwright-report/
+test-results/
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
