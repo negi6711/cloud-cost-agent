@@ -92,5 +92,5 @@ export const MAX_UPLOAD_BYTES = 25 * 1024 * 1024;
 export const PARSER_VERSION = "ce-csv/1";
 export const QUESTION_SET_VERSION = "jev-qs/1";
 
-export const JOB_KINDS = ["snapshot.process"] as const;
+export const JOB_KINDS = ["snapshot.process", "storage.delete"] as const;
 export type JobKind = (typeof JOB_KINDS)[number];

@@ -1,0 +1,1 @@
+ALTER TABLE "source_file" ADD COLUMN "raw_deleted_at" timestamp with time zone;

@@ -46,6 +46,9 @@ class Settings(BaseSettings):
     jev_concurrency: int = Field(4, alias="JEV_CONCURRENCY", ge=1, le=8)
     jev_low_confidence_threshold: float = Field(0.5, alias="JEV_LOW_CONFIDENCE_THRESHOLD", ge=0, le=1)
 
+    raw_file_retention_days: int = Field(30, alias="RAW_FILE_RETENTION_DAYS", ge=1, le=365)
+    retention_interval_seconds: int = Field(3600, alias="RETENTION_INTERVAL_SECONDS", ge=60)
+
     worker_id: str = Field("worker-local", alias="WORKER_ID")
     poll_interval_seconds: float = Field(5.0, alias="WORKER_POLL_INTERVAL_SECONDS", gt=0)
     lease_seconds: int = Field(300, alias="WORKER_LEASE_SECONDS", ge=30)

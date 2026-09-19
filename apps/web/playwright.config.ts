@@ -11,6 +11,7 @@ const REPO_ROOT = path.resolve(__dirname, "../..");
 // never touch cca_dev or .local-storage.
 const STORAGE_DIR = path.resolve(__dirname, "test-results/e2e-storage");
 const INBOX_DIR = path.resolve(__dirname, "test-results/e2e-inbox");
+// Created here and again by the servers on demand; global setup empties them before each run.
 mkdirSync(STORAGE_DIR, { recursive: true });
 mkdirSync(INBOX_DIR, { recursive: true });
 
@@ -23,6 +24,7 @@ const shared = {
 
 export default defineConfig({
   testDir: "e2e",
+  globalSetup: "./e2e/global-setup.ts",
   outputDir: "test-results/artifacts",
   fullyParallel: false,
   workers: 1,

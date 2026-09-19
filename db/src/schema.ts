@@ -124,6 +124,8 @@ export const sourceFile = pgTable(
     idempotencyKey: text("idempotency_key").notNull(),
     detectedPeriodStart: date("detected_period_start"),
     detectedPeriodEnd: date("detected_period_end"),
+    /** When the raw object was removed by the retention sweeper; derived data is kept until deleted. */
+    rawDeletedAt: timestamp("raw_deleted_at", { withTimezone: true }),
     createdAt: createdAt(),
   },
   (t) => [

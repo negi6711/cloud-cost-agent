@@ -22,7 +22,9 @@ _UUID_RE = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f
 
 
 def connect(database_url: str) -> Connection:
-    return psycopg.connect(database_url, row_factory=dict_row, autocommit=True)
+    # prepare_threshold=None: no server-side prepared statements, which transaction-mode poolers
+    # (Supabase's pooler) cannot carry across transactions.
+    return psycopg.connect(database_url, row_factory=dict_row, autocommit=True, prepare_threshold=None)
 
 
 @contextmanager

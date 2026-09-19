@@ -30,4 +30,4 @@ export const POST = leadJsonRoute("pilot_request.create", pilotRequestSchema, as
   });
   log.info("pilot_request.created", { requestId, pilotRequestId: id, manualReviewOnly: body.manualReviewOnly });
   return { status: 201, body: { pilotRequestId: id } };
-});
+}, { limit: "pilot" });

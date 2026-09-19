@@ -15,4 +15,4 @@ export const POST = leadJsonRoute("snapshot.create", createSnapshotSchema, async
     await sendResultLink(session.tenantId, session.leadId, result.snapshotRunId, requestId);
   }
   return { status: result.created ? 201 : 200, body: { snapshotRunId: result.snapshotRunId } };
-});
+}, { limit: "snapshot" });

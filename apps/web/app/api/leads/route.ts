@@ -7,11 +7,14 @@ import { errorResponse, newRequestId, readJsonBody } from "@/lib/http";
 import { encodeLeadSession, LEAD_SESSION_COOKIE, LEAD_SESSION_TTL_SECONDS } from "@/lib/lead-session";
 import { createLead } from "@/lib/leads";
 import { log } from "@/lib/log";
+import { guardRequest } from "@/lib/route";
 
 const MAX_BODY_BYTES = 16 * 1024;
 
 export async function POST(request: Request): Promise<NextResponse> {
   const requestId = newRequestId();
+  const guard = guardRequest(request, "lead", requestId);
+  if (guard) return guard;
 
   const body = await readJsonBody(request, MAX_BODY_BYTES);
   if (body === undefined) {

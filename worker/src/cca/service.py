@@ -19,7 +19,9 @@ from fastapi import FastAPI, Header, HTTPException, Response
 
 from cca.db import connect
 from cca.jobs.runner import Handler, Runner
+from cca.jobs.storage_delete import make_storage_delete_handler
 from cca.providers.factory import provider_factory
+from cca.retention import sweep
 from cca.settings import Settings
 from cca.snapshots.process import make_handler
 from cca.storage import object_store
@@ -64,6 +66,8 @@ class JobLoop:
 
     def _run(self) -> None:
         handlers = self._handlers_factory()
+        store = object_store(self._settings)
+        next_sweep = 0.0
         while not self._stop.is_set():
             try:
                 with connect(self._settings.database_url) as conn:
@@ -72,6 +76,9 @@ class JobLoop:
                         processed = runner.drain()
                         if processed:
                             log.info("loop.drained", jobs=processed)
+                        if time.monotonic() >= next_sweep:
+                            sweep(conn, store, self._settings.raw_file_retention_days)
+                            next_sweep = time.monotonic() + self._settings.retention_interval_seconds
                         self._wake.wait(self._settings.poll_interval_seconds)
                         self._wake.clear()
             except Exception as exc:  # keep the loop alive across DB outages (logged, then retried)
@@ -82,6 +89,7 @@ class JobLoop:
 def default_handlers(settings: Settings) -> dict[str, Handler]:
     store = object_store(settings)
     return {
+        "storage.delete": make_storage_delete_handler(store),
         "snapshot.process": make_handler(
             store,
             settings.upload_max_bytes,

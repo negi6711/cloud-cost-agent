@@ -7,6 +7,8 @@ import { UserFacingError } from "./errors";
 import { errorResponse, newRequestId, readJsonBody } from "./http";
 import type { LeadSession } from "./lead-session";
 import { log } from "./log";
+import { isSameOrigin } from "./origin";
+import { checkLimit, clientKey, type LimitName } from "./rate-limit";
 import { leadSessionFrom } from "./request-session";
 
 interface JsonRouteContext<T> {
@@ -25,10 +27,13 @@ export function leadJsonRoute<S extends z.ZodType>(
   name: string,
   schema: S,
   handler: (ctx: JsonRouteContext<z.infer<S>>) => Promise<{ status: number; body: unknown }>,
-  maxBytes = 8 * 1024,
+  options: { limit: LimitName; maxBytes?: number },
 ) {
+  const maxBytes = options.maxBytes ?? 8 * 1024;
   return async function route(request: Request): Promise<NextResponse> {
     const requestId = newRequestId();
+    const guard = guardRequest(request, options.limit, requestId);
+    if (guard) return guard;
     const session = leadSessionFrom(request);
     if (!session) {
       return errorResponse(401, requestId, "Your session has expired. Please fill in the form again.");
@@ -55,4 +60,20 @@ export function leadJsonRoute<S extends z.ZodType>(
       return errorResponse(500, requestId);
     }
   };
+}
+
+/** Same-origin and rate-limit checks shared by every state-changing route. */
+export function guardRequest(request: Request, limit: LimitName, requestId: string): NextResponse | null {
+  if (!isSameOrigin(request)) {
+    log.warn("request.cross_origin_refused", { requestId });
+    return errorResponse(403, requestId, "This request was refused.");
+  }
+  const result = checkLimit(limit, clientKey(request));
+  if (!result.ok) {
+    log.warn("request.rate_limited", { requestId, limit });
+    const res = errorResponse(429, requestId, "Too many requests. Please wait a few minutes and try again.");
+    res.headers.set("retry-after", String(result.retryAfterSeconds));
+    return res;
+  }
+  return null;
 }

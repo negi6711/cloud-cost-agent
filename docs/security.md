@@ -77,7 +77,14 @@ Filled in as controls land; each links to its test.
 - [x] Model keys absent from web bundle and API responses — the key is read only by the worker
   (`SecretStr`, never in repr); only `cca/providers/jev.py` imports the SDK (AST test); bundle scan
   per build
-- [ ] Delete flow for source and derived data
+- [x] Delete flow for source and derived data — prospect or admin; rows first (cascade), then the
+  object, with a `storage.delete` retry job on failure; content-free audit event
+  (`apps/web/tests/hardening.test.ts`, `apps/web/e2e/admin.spec.ts`)
+- [x] Raw-file retention — worker sweeper deletes objects after 30 days, keeps derived data
+  (`worker/tests/test_retention_and_delete.py`)
+- [x] Rate limits and same-origin checks on every state-changing route (in-memory, single web
+  instance; move to a shared store before scaling out)
+- [x] Admin area: 404 for signed-in non-admins, 401/403 on admin APIs, every admin action audited
 - [x] Evidence packets minimized: account/tag values aliased, IDs and emails masked,
   instruction-like and formula labels withheld, no rule outcomes (`worker/tests/test_analysis.py`)
 - [x] Billing-only data can never produce RESIZE/DELETE/STOP/BUY: category enum + DB CHECK + policy

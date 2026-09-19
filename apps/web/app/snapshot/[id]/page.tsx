@@ -3,9 +3,11 @@ import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { z } from "zod";
 
+import { DeleteFileButton } from "@/components/admin-controls";
 import { FindingCard } from "@/components/finding-card";
 import { money, monthLabel, pct } from "@/lib/format";
 import { getSnapshotDetail, type SnapshotDetail } from "@/lib/snapshot-detail";
+import { sourceFileForRun } from "@/lib/source-files";
 import { tenantForViewer } from "@/lib/snapshots";
 import { getViewer } from "@/lib/viewer";
 
@@ -54,6 +56,7 @@ export default async function SnapshotPage({ params }: PageProps<"/snapshot/[id]
   const d = tenantId ? await getSnapshotDetail(tenantId, id) : null;
   if (!d) notFound(); // another workspace's snapshot is indistinguishable from a missing one
 
+  const fileId = await sourceFileForRun(tenantId!, id);
   const s = d.summary;
   const cur = s?.currency ?? null;
   const done = d.completedAt !== null;
@@ -167,6 +170,19 @@ export default async function SnapshotPage({ params }: PageProps<"/snapshot/[id]
           {s ? ` (at least ${money(s.thresholds.material_absolute, cur)} a month, or +20%)` : ""}. Nothing needs a
           decision this month.
         </p>
+      )}
+
+      {fileId && (
+        <section className="mt-10 rounded-xl border border-border p-5 text-sm" aria-label="Your data">
+          <h2 className="font-semibold">Your data</h2>
+          <p className="mt-1 text-muted">
+            The raw file is kept for 30 days unless you delete it sooner. Deleting removes the file, this snapshot and
+            all findings.
+          </p>
+          <div className="mt-3">
+            <DeleteFileButton sourceFileId={fileId} redirectTo="/snapshots" />
+          </div>
+        </section>
       )}
 
       <section className="mt-10 border-t border-border pt-6 text-xs text-muted" aria-label="Known limitations">

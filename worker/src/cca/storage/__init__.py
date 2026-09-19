@@ -33,6 +33,14 @@ def assert_valid_key(key: str) -> None:
 class ObjectStore(Protocol):
     def read(self, key: str, max_bytes: int) -> bytes: ...
 
+    def delete(self, key: str) -> None:
+        """Remove the object. Deleting a missing object is not an error (idempotent)."""
+        ...
+
+
+def key_belongs_to_tenant(key: str, tenant_id: str) -> bool:
+    return bool(_KEY_RE.match(key)) and key.startswith(f"uploads/{tenant_id}/")
+
 
 class LocalObjectStore:
     def __init__(self, root: Path) -> None:
@@ -54,6 +62,9 @@ class LocalObjectStore:
         if size > max_bytes:
             raise ObjectTooLargeError(key)
         return path.read_bytes()
+
+    def delete(self, key: str) -> None:
+        self.path_for(key).unlink(missing_ok=True)
 
 
 class R2ObjectStore:
@@ -83,6 +94,10 @@ class R2ObjectStore:
         if len(body) > max_bytes:
             raise ObjectTooLargeError(key)
         return bytes(body)
+
+    def delete(self, key: str) -> None:
+        assert_valid_key(key)
+        self._client.delete_object(Bucket=self._bucket, Key=key)  # S3 semantics: missing is fine
 
 
 def object_store(settings: Settings) -> ObjectStore:

@@ -35,6 +35,7 @@ _TERMINAL = ("completed", "insufficient_data", "failed")
 LOAD_MESSAGES = {
     "file_too_large": "The file is larger than the 25 MB limit.",
     "integrity_mismatch": "The stored file does not match what was uploaded, so it was not analyzed. Please upload it again.",
+    "raw_file_deleted": "The uploaded file has already been deleted under the retention policy. Please upload it again.",
 }
 
 
@@ -84,7 +85,8 @@ def make_handler(
 
 def _load_run(conn: Connection, run_id: UUID) -> dict[str, Any]:
     row = conn.execute(
-        "SELECT r.id, r.status, r.source_file_id, r.consent_basis, f.storage_key, f.sha256, f.size_bytes "
+        "SELECT r.id, r.status, r.source_file_id, r.consent_basis, f.storage_key, f.sha256, f.size_bytes, "
+        "f.raw_deleted_at "
         "FROM snapshot_run r JOIN source_file f "
         "  ON f.tenant_id = r.tenant_id AND f.id = r.source_file_id "
         "WHERE r.id = %s",
@@ -133,6 +135,9 @@ def process_snapshot(
             return
 
     # ---- load
+    if run["raw_deleted_at"] is not None:
+        _fail(conn, job, run, _load_issue("raw_file_deleted"))
+        return
     try:
         data = store.read(run["storage_key"], max_bytes)
     except ObjectMissingError as exc:

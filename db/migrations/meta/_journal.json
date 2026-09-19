@@ -50,6 +50,20 @@
       "when": 1789809009109,
       "tag": "0006_run_model_identity",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1789817371399,
+      "tag": "0007_raw_file_retention",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1789817374244,
+      "tag": "0008_retention_function",
+      "breakpoints": true
     }
   ]
 }

@@ -1,0 +1,79 @@
+# Render blueprint: web app (Next.js) + worker (Python), US East (Virginia).
+# Free plan for staging; switch `plan` to a paid instance type at launch so nothing sleeps.
+# Secrets marked `sync: false` are entered in the Render dashboard, never committed.
+# Setup order and every value: docs/deployment.md.
+
+envVarGroups:
+  - name: cca-shared
+    envVars:
+      - key: APP_ENV
+        value: staging
+      - key: WORKER_SHARED_SECRET
+        generateValue: true
+      - key: STORAGE_DRIVER
+        value: r2
+      - key: R2_ACCOUNT_ID
+        sync: false
+      - key: R2_ACCESS_KEY_ID
+        sync: false
+      - key: R2_SECRET_ACCESS_KEY
+        sync: false
+      - key: R2_BUCKET
+        sync: false
+      - key: DATABASE_URL # Supabase pooler URL for the cca_app role (never the postgres owner)
+        sync: false
+      - key: RAW_FILE_RETENTION_DAYS
+        value: "30"
+
+services:
+  - type: web
+    name: cca-web
+    runtime: node
+    region: virginia
+    plan: free
+    buildCommand: npm ci && npm run build -w @cca/web
+    startCommand: npm run start -w @cca/web
+    healthCheckPath: /
+    envVars:
+      - fromGroup: cca-shared
+      - key: NODE_VERSION
+        value: "22"
+      - key: APP_BASE_URL # e.g. https://cca-web.onrender.com (or your domain later)
+        sync: false
+      - key: WORKER_URL # e.g. https://cca-worker.onrender.com
+        sync: false
+      - key: AUTH_SECRET
+        generateValue: true
+      - key: STORAGE_URL_SIGNING_SECRET
+        generateValue: true
+      - key: ADMIN_EMAILS
+        sync: false
+      - key: EMAIL_DRIVER
+        value: resend
+      - key: RESEND_API_KEY
+        sync: false
+      - key: EMAIL_FROM # onboarding@resend.dev until a domain is verified (delivers only to you)
+        sync: false
+
+  - type: web # a web service (not a background worker) so it can run on the free plan and be woken by a kick
+    name: cca-worker
+    runtime: python
+    region: virginia
+    plan: free
+    buildCommand: pip install uv==0.12.11 && uv sync --frozen --no-dev
+    startCommand: uv run --frozen --no-dev python -m cca
+    healthCheckPath: /healthz
+    envVars:
+      - fromGroup: cca-shared
+      - key: PYTHON_VERSION
+        value: "3.12.14"
+      - key: WORKER_ID
+        value: render-worker
+      - key: JEV_ENABLED # true once the TypeSafe key is set and verified with cca.jev_smoke
+        value: "false"
+      - key: JEV_PROVIDER
+        value: typesafe
+      - key: JEV_MODEL
+        value: jev-1.13.0
+      - key: TYPESAFE_API_KEY
+        sync: false

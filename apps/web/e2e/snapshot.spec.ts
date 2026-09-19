@@ -59,10 +59,11 @@ test("a consented snapshot shows facts, labelled classification, and decision ca
   await expect(ecs).toContainText("Model-assisted · Test classifier (not a real model): suggested Request evidence (90% confidence)");
   await expect(ecs).toContainText("Confirm which team owns this spend");
 
-  // Never a destructive recommendation from billing-only data.
-  const text = await page.locator("main").innerText();
-  const decisions = text.slice(text.indexOf("Decisions"), text.indexOf("Known limitations"));
-  expect(decisions).not.toMatch(/\b(resize|delete|terminate|shut down|purchase|buy)\b/i);
+  // Never a destructive recommendation from billing-only data (checked on the decision cards only;
+  // the page's own "delete my data" control is not a recommendation).
+  for (const card of await cards.all()) {
+    expect(await card.innerText()).not.toMatch(/\b(resize|delete|terminate|shut down|purchase|buy)\b/i);
+  }
 
   await expect(page.getByRole("region", { name: "Known limitations" })).toContainText("not guaranteed savings");
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
