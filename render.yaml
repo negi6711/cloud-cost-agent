@@ -60,13 +60,12 @@ services:
     runtime: python
     region: virginia
     plan: free
+    # uv installs the Python version pinned in .python-version (3.12), independent of Render's default.
     buildCommand: pip install uv==0.12.11 && uv sync --frozen --no-dev
     startCommand: uv run --frozen --no-dev python -m cca
     healthCheckPath: /healthz
     envVars:
       - fromGroup: cca-shared
-      - key: PYTHON_VERSION
-        value: "3.12.14"
       - key: WORKER_ID
         value: render-worker
       - key: JEV_ENABLED # true once the TypeSafe key is set and verified with cca.jev_smoke
