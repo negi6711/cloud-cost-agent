@@ -15,12 +15,16 @@ if (!url) {
   process.exit(1);
 }
 
-const pool = new pg.Pool({ connectionString: url, max: 1 });
+// Hosted databases require TLS. (Supabase's CA is not in Node's default store; the connection is
+// encrypted, and the certificate chain is not pinned yet — see docs/deployment.md.)
+const host = new URL(url).hostname;
+const local = host === "localhost" || host === "127.0.0.1";
+const pool = new pg.Pool({ connectionString: url, max: 1, ssl: local ? undefined : { rejectUnauthorized: false } });
 try {
   await migrate(drizzle(pool), {
     migrationsFolder: fileURLToPath(new URL("../migrations", import.meta.url)),
   });
-  console.log(`migrations applied (${new URL(url).pathname.slice(1)})`);
+  console.log(`migrations applied (${new URL(url).pathname.slice(1)} on ${local ? "localhost" : host})`);
 } finally {
   await pool.end();
 }

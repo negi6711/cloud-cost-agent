@@ -64,6 +64,13 @@
       "when": 1789817374244,
       "tag": "0008_retention_function",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1789836375662,
+      "tag": "0009_lock_down_platform_roles",
+      "breakpoints": true
     }
   ]
 }

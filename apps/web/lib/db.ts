@@ -17,7 +17,11 @@ const globalForDb = globalThis as unknown as { ccaPool?: Pool; ccaDb?: Db };
 function db(): Db {
   if (!globalForDb.ccaDb) {
     // One pool per process; cached on globalThis so dev hot-reloads don't leak connections.
-    globalForDb.ccaPool = new Pool({ connectionString: serverEnv().DATABASE_URL, max: 10 });
+    const url = serverEnv().DATABASE_URL;
+    const host = new URL(url).hostname;
+    const local = host === "localhost" || host === "127.0.0.1";
+    // Hosted databases require TLS (encrypted; certificate chain not pinned yet, docs/deployment.md).
+    globalForDb.ccaPool = new Pool({ connectionString: url, max: 10, ssl: local ? undefined : { rejectUnauthorized: false } });
     globalForDb.ccaDb = drizzle(globalForDb.ccaPool, { schema });
   }
   return globalForDb.ccaDb;
