@@ -19,8 +19,9 @@ from fastapi import FastAPI, Header, HTTPException, Response
 
 from cca.db import connect
 from cca.jobs.runner import Handler, Runner
+from cca.providers.factory import provider_factory
 from cca.settings import Settings
-from cca.snapshots.process import make_handler, unavailable_provider_factory
+from cca.snapshots.process import make_handler
 from cca.storage import object_store
 
 log = structlog.get_logger("cca.service")
@@ -84,8 +85,9 @@ def default_handlers(settings: Settings) -> dict[str, Handler]:
         "snapshot.process": make_handler(
             store,
             settings.upload_max_bytes,
-            providers=unavailable_provider_factory(settings.jev_enabled),
+            providers=provider_factory(settings),
             low_confidence=settings.jev_low_confidence_threshold,
+            concurrency=settings.jev_concurrency,
         )
     }
 

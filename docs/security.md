@@ -67,12 +67,16 @@ Filled in as controls land; each links to its test.
   `apps/web/lib/sniff.ts`, `apps/web/tests/sniff.test.ts`; worker re-verifies SHA-256 before use
 - [x] Tenant isolation (chokepoint + RLS) with cross-tenant tests — `db/migrations/0001_*.sql`,
   `apps/web/tests/tenant-isolation.test.ts`
-- [ ] Consent gate before external model processing — consent captured per upload (opt-in, never
-  pre-ticked) and recorded on the run; enforcement lands with the Jev provider (Day 5)
+- [x] Consent gate before external model processing — opt-in per upload, never pre-ticked; the worker
+  checks consent before any provider is built, and replay refuses unconsented runs
+  (`worker/tests/test_classification_pipeline.py`)
+- [x] No hidden model substitution — failures yield explicit unavailable states; the mock is labelled
+  in the UI and refused when hosted; hosted Jev must use a pinned model version
 - [x] Redacted structured logs; no file content or prompts in logs — `apps/web/lib/log.ts`,
   `worker/src/cca/logging_setup.py`
-- [ ] Model keys absent from web bundle and API responses — manual bundle scan clean on Day 1;
-  automated check pending
+- [x] Model keys absent from web bundle and API responses — the key is read only by the worker
+  (`SecretStr`, never in repr); only `cca/providers/jev.py` imports the SDK (AST test); bundle scan
+  per build
 - [ ] Delete flow for source and derived data
 - [x] Evidence packets minimized: account/tag values aliased, IDs and emails masked,
   instruction-like and formula labels withheld, no rule outcomes (`worker/tests/test_analysis.py`)

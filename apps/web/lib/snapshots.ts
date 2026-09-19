@@ -200,3 +200,16 @@ export async function snapshotTenantForAdmin(runId: string): Promise<string | nu
   );
   return row?.tenantId ?? null;
 }
+
+/**
+ * The workspace in which this viewer may see the run: one of their own, or any for an admin.
+ * Returns null otherwise, so another workspace's run is indistinguishable from a missing one.
+ */
+export async function tenantForViewer(
+  viewer: { tenantIds: string[]; isAdmin: boolean },
+  runId: string,
+): Promise<string | null> {
+  const own = await findViewableSnapshot(viewer.tenantIds, runId);
+  if (own) return own.tenantId;
+  return viewer.isAdmin ? snapshotTenantForAdmin(runId) : null;
+}

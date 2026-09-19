@@ -70,6 +70,20 @@ def _call_values(tenant_id: UUID, run_id: UUID, evidence_id: str, call: CallReco
     )
 
 
+def record_calls(conn: Connection, tenant_id: UUID, run_id: UUID, analysis: Analysis) -> None:
+    """Every provider call, successful or not, is kept (cache hits are not re-recorded)."""
+    for f in analysis.findings:
+        for call in f.outcome.calls:
+            if call.status == "cached":
+                continue
+            conn.execute(
+                "INSERT INTO model_call (tenant_id, snapshot_run_id, evidence_id, provider, model_requested, "
+                "model_reported, request_id, question_set_version, packet_sha256, status, attempt, latency_ms, "
+                "input_tokens, answers, error_class) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)",
+                _call_values(tenant_id, run_id, f.candidate.evidence_id, call),
+            )
+
+
 def record_analysis(
     conn: Connection,
     tenant_id: UUID,
@@ -77,8 +91,11 @@ def record_analysis(
     analysis: Analysis,
     warnings: list[dict[str, Any]],
     explanation_provider: str,
+    model_provider: str | None = None,
+    model_identifier: str | None = None,
 ) -> None:
     """Call inside a tenant transaction. Idempotent per (run, evidence_id)."""
+    record_calls(conn, tenant_id, run_id, analysis)
     placeholders = ", ".join(["%s"] * 29)
     for f in analysis.findings:
         conn.execute(
@@ -91,19 +108,12 @@ def record_analysis(
             "VALUES (%s, %s, %s, %s, %s, %s) ON CONFLICT (tenant_id, snapshot_run_id, evidence_id) DO NOTHING",
             (tenant_id, run_id, f.candidate.evidence_id, PACKET_VERSION, f.packet_sha256, Jsonb(f.packet)),
         )
-        for call in f.outcome.calls:
-            conn.execute(
-                "INSERT INTO model_call (tenant_id, snapshot_run_id, evidence_id, provider, model_requested, "
-                "model_reported, request_id, question_set_version, packet_sha256, status, attempt, latency_ms, "
-                "input_tokens, answers, error_class) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)",
-                _call_values(tenant_id, run_id, f.candidate.evidence_id, call),
-            )
 
     status = "insufficient_data" if analysis.abstained else "completed"
     conn.execute(
         "UPDATE snapshot_run SET status = %s, warnings = %s, summary = %s, data_readiness_score = %s, "
         "evidence_packet_version = %s, evidence_packet_sha256 = %s, model_status = %s, "
-        "explanation_provider = %s, completed_at = now() WHERE id = %s",
+        "model_provider = %s, model_identifier = %s, explanation_provider = %s, completed_at = now() WHERE id = %s",
         (
             status,
             Jsonb(warnings),
@@ -112,6 +122,8 @@ def record_analysis(
             PACKET_VERSION if analysis.findings else None,
             analysis.packets_sha256,
             analysis.model_status.value if analysis.model_status else None,
+            model_provider,
+            model_identifier,
             explanation_provider,
             run_id,
         ),

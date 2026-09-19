@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import date
-from decimal import Decimal
+from decimal import ROUND_HALF_UP, Decimal
 from typing import Protocol
 
 from cca.snapshots.types import (
@@ -64,7 +64,8 @@ def money(amount: Decimal, currency: str | None) -> str:
 
 
 def percent(ratio: Decimal) -> str:
-    return f"{(ratio * 100).quantize(Decimal('0.1'))}%"
+    """Round half up (as the web app does), e.g. 0.2955 -> 29.6%."""
+    return f"{(ratio * 100).quantize(Decimal('0.1'), rounding=ROUND_HALF_UP)}%"
 
 
 def month_name(d: date) -> str:

@@ -63,6 +63,9 @@ export default defineConfig({
         DATABASE_URL: process.env.TEST_DATABASE_URL ?? readTestDatabaseUrl(),
         WORKER_ID: "worker-e2e",
         WORKER_POLL_INTERVAL_SECONDS: "1",
+        // The deterministic stand-in, clearly labelled in the UI; never allowed when hosted.
+        JEV_ENABLED: "true",
+        JEV_PROVIDER: "mock",
       },
     },
   ],

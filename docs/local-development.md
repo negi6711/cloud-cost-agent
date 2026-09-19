@@ -74,6 +74,17 @@ One-time for e2e: `npx playwright install chromium` in `apps/web`.
 |---|---|---|
 | Database | native Postgres `cca_dev` | Supabase Postgres (US East) |
 | File storage | `STORAGE_DRIVER=local` — files in `.local-storage/`, HMAC-signed expiring URLs | Cloudflare R2 private bucket |
-| Jev | `JEV_PROVIDER=mock`, `JEV_ENABLED=false` | `JEV_PROVIDER=typesafe` with a server-side key |
+| Jev | `JEV_ENABLED=false` (rule-based). Set `JEV_ENABLED=true` + `JEV_PROVIDER=mock` for the labelled test classifier | `JEV_PROVIDER=typesafe`, pinned `JEV_MODEL`, server-side key |
 | Login emails | `EMAIL_DRIVER=dev-inbox` — links appear at `/dev/inbox` and in the console | Resend (needs a verified domain) |
 
+
+## Jev tools
+
+```bash
+uv run python -m cca.jev_smoke                                  # one real call on SYNTHETIC fixture data
+uv run python -m cca.replay --tenant <uuid> --run <uuid>        # re-validate a run's stored answers
+uv run python -m cca.replay --tenant <uuid> --run <uuid> --live # ask the provider again (consented runs only)
+```
+
+The question set lives in `worker/src/cca/providers/jev_questions_v1.py` (review before changing;
+bump `QUESTION_SET_VERSION` in both `worker/src/cca/versions.py` and `packages/config/src/index.ts`).

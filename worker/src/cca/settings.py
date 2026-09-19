@@ -2,15 +2,17 @@
 
 from __future__ import annotations
 
+import re
 from functools import lru_cache
 from pathlib import Path
 from typing import Literal
 
-from pydantic import Field, model_validator
+from pydantic import Field, SecretStr, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 MAX_UPLOAD_BYTES = 25 * 1024 * 1024
+_PINNED_MODEL = re.compile(r"^jev-\d+\.\d+\.\d+$")
 
 
 class Settings(BaseSettings):
@@ -34,12 +36,32 @@ class Settings(BaseSettings):
     upload_max_bytes: int = Field(MAX_UPLOAD_BYTES, alias="UPLOAD_MAX_BYTES", gt=0, le=MAX_UPLOAD_BYTES)
 
     jev_enabled: bool = Field(False, alias="JEV_ENABLED")
+    # mock = deterministic stand-in for local development and tests; refused when hosted
+    jev_provider: Literal["mock", "typesafe"] = Field("mock", alias="JEV_PROVIDER")
+    typesafe_api_key: SecretStr | None = Field(None, alias="TYPESAFE_API_KEY")
+    jev_model: str = Field("jev-1.13.0", alias="JEV_MODEL")
+    jev_base_url: str | None = Field(None, alias="JEV_BASE_URL")
+    jev_timeout_ms: int = Field(30_000, alias="JEV_TIMEOUT_MS", ge=1_000, le=120_000)
+    jev_max_retries: int = Field(2, alias="JEV_MAX_RETRIES", ge=0, le=5)
+    jev_concurrency: int = Field(4, alias="JEV_CONCURRENCY", ge=1, le=8)
     jev_low_confidence_threshold: float = Field(0.5, alias="JEV_LOW_CONFIDENCE_THRESHOLD", ge=0, le=1)
 
     worker_id: str = Field("worker-local", alias="WORKER_ID")
     poll_interval_seconds: float = Field(5.0, alias="WORKER_POLL_INTERVAL_SECONDS", gt=0)
     lease_seconds: int = Field(300, alias="WORKER_LEASE_SECONDS", ge=30)
     kick_max_skew_seconds: int = Field(300, alias="WORKER_KICK_MAX_SKEW_SECONDS", ge=10)
+
+    @property
+    def hosted(self) -> bool:
+        return self.app_env in ("staging", "production")
+
+    @model_validator(mode="after")
+    def _check_jev(self) -> Settings:
+        if self.hosted and self.jev_provider == "mock":
+            raise ValueError("JEV_PROVIDER=mock is not allowed when hosted")
+        if self.hosted and not _PINNED_MODEL.match(self.jev_model):
+            raise ValueError("JEV_MODEL must be a pinned version such as jev-1.13.0 when hosted, not an alias")
+        return self
 
     @model_validator(mode="after")
     def _check_storage(self) -> Settings:

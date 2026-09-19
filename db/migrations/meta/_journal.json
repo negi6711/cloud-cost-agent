@@ -43,6 +43,13 @@
       "when": 1789751940343,
       "tag": "0005_findings_summary",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1789809009109,
+      "tag": "0006_run_model_identity",
+      "breakpoints": true
     }
   ]
 }

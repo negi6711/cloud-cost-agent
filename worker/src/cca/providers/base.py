@@ -89,8 +89,11 @@ class ClassificationOutcome:
 
 
 class DecisionModelProvider(Protocol):
-    name: str
-    model: str
+    @property
+    def name(self) -> str: ...
+
+    @property
+    def model(self) -> str: ...
 
     def classify(self, packet: dict[str, Any], packet_sha256: str) -> ClassificationOutcome: ...
 

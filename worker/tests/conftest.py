@@ -85,7 +85,9 @@ CSV = b"Service,Amazon EC2($),Total costs($)\nService total,300,300\n2026-07-01,
 
 @pytest.fixture
 def seed(owner: psycopg.Connection[DictRow], storage_dir: Path):  # type: ignore[no-untyped-def]
-    def _seed(content: bytes = CSV, *, write_file: bool = True, max_attempts: int = 3) -> Seeded:
+    def _seed(
+        content: bytes = CSV, *, write_file: bool = True, max_attempts: int = 3, consent_basis: str | None = None
+    ) -> Seeded:
         tenant_id, lead_id, file_id, run_id, job_id = (uuid.uuid4() for _ in range(5))
         key = f"uploads/{tenant_id}/{uuid.uuid4()}"
         owner.execute("INSERT INTO tenant (id, tenant_id, name) VALUES (%s, %s, 'T')", (tenant_id, tenant_id))
@@ -101,9 +103,9 @@ def seed(owner: psycopg.Connection[DictRow], storage_dir: Path):  # type: ignore
             (file_id, tenant_id, lead_id, key, len(content), hashlib.sha256(content).hexdigest(), str(uuid.uuid4())),
         )
         owner.execute(
-            "INSERT INTO snapshot_run (id, tenant_id, source_file_id, parser_version, status, question_set_version) "
-            "VALUES (%s, %s, %s, 'ce-csv/1', 'queued', 'jev-qs/1')",
-            (run_id, tenant_id, file_id),
+            "INSERT INTO snapshot_run (id, tenant_id, source_file_id, parser_version, status, question_set_version, "
+            "consent_basis) VALUES (%s, %s, %s, 'ce-csv/1', 'queued', 'jev-qs/1', %s)",
+            (run_id, tenant_id, file_id, consent_basis),
         )
         owner.execute(
             "INSERT INTO job (id, tenant_id, kind, idempotency_key, payload, max_attempts) "

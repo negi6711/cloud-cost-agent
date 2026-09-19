@@ -226,6 +226,9 @@ export const snapshotRun = pgTable(
     evidencePacketSha256: text("evidence_packet_sha256"),
     questionSetVersion: text("question_set_version").notNull(),
     modelStatus: text("model_status"),
+    /** Provider and pinned model used for classification (null when none ran). */
+    modelProvider: text("model_provider"),
+    modelIdentifier: text("model_identifier"),
     consentBasis: text("consent_basis"),
     explanationProvider: text("explanation_provider"),
     /** Aggregate facts for the snapshot page: monthly totals, top services, changes, data gaps. */

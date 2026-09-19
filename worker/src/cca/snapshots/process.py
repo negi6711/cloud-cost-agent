@@ -21,9 +21,11 @@ from cca.jobs.errors import PermanentJobError, RetryableJobError
 from cca.jobs.queue import Job
 from cca.parsers import ParseError, ParseResult, parse_billing_export
 from cca.providers.base import DecisionModelProvider, UnavailableProvider, UnavailableReason
+from cca.providers.cache import CachingProvider, load_cached_answers
+from cca.providers.factory import CONSENT_GRANTED, ProviderFactory
 from cca.snapshots.analyze import analyze
 from cca.snapshots.explain import ExplanationProvider, TemplateExplanationProvider
-from cca.snapshots.persist import record_analysis
+from cca.snapshots.persist import record_analysis, record_calls
 from cca.storage import ObjectMissingError, ObjectStore, ObjectTooLargeError
 
 log = structlog.get_logger("cca.snapshots")
@@ -41,8 +43,6 @@ class IntegrityError(PermanentJobError):
 
 
 Clock = Callable[[], date]
-# consent_basis of the run -> the provider to use. Never returns a different model silently.
-ProviderFactory = Callable[[str | None], DecisionModelProvider]
 
 ABSTAIN_ISSUE = {
     "code": "no_comparison",
@@ -57,15 +57,11 @@ def utc_today() -> date:
     return datetime.now(UTC).date()
 
 
-def unavailable_provider_factory(jev_enabled: bool) -> ProviderFactory:
-    """Day 4: classification is not wired yet. Consent is checked first, always."""
-
-    def factory(consent_basis: str | None) -> DecisionModelProvider:
-        if consent_basis != "typesafe:granted":
-            return UnavailableProvider(UnavailableReason.NO_CONSENT)
-        return UnavailableProvider(UnavailableReason.NOT_CONFIGURED if jev_enabled else UnavailableReason.DISABLED)
-
-    return factory
+def _no_model(consent_basis: str | None, attempt: int) -> DecisionModelProvider:
+    """Default for tests and tools: classification disabled, consent still respected."""
+    if consent_basis != CONSENT_GRANTED:
+        return UnavailableProvider(UnavailableReason.NO_CONSENT)
+    return UnavailableProvider(UnavailableReason.DISABLED)
 
 
 def make_handler(
@@ -75,12 +71,13 @@ def make_handler(
     providers: ProviderFactory | None = None,
     explainer: ExplanationProvider | None = None,
     low_confidence: float = 0.5,
+    concurrency: int = 4,
 ) -> Callable[[Connection, Job], None]:
-    provider_for = providers or unavailable_provider_factory(jev_enabled=False)
+    provider_for = providers or _no_model
     explain = explainer or TemplateExplanationProvider()
 
     def handle(conn: Connection, job: Job) -> None:
-        process_snapshot(conn, job, store, max_bytes, today, provider_for, explain, low_confidence)
+        process_snapshot(conn, job, store, max_bytes, today, provider_for, explain, low_confidence, concurrency)
 
     return handle
 
@@ -126,6 +123,7 @@ def process_snapshot(
     provider_for: ProviderFactory | None = None,
     explainer: ExplanationProvider | None = None,
     low_confidence: float = 0.5,
+    concurrency: int = 4,
 ) -> None:
     run_id = UUID(str(job.payload["snapshotRunId"]))
     with tenant_transaction(conn, job.tenant_id):
@@ -162,14 +160,35 @@ def process_snapshot(
     parse_warnings = [i.to_json() for i in result.issues]
     _record_parse(conn, job, run, result, parse_warnings)
 
-    # ---- analyze (classification happens inside, through the provider for this run's consent)
-    provider = (provider_for or unavailable_provider_factory(jev_enabled=False))(run["consent_basis"])
+    # ---- analyze + classify (only through the provider allowed by this run's consent)
+    base = (provider_for or _no_model)(run["consent_basis"], job.attempts)
+    provider: DecisionModelProvider = base
+    if not isinstance(base, UnavailableProvider):
+        with tenant_transaction(conn, job.tenant_id):
+            _set_status(conn, run_id, "classifying")
+            cache = load_cached_answers(conn, base.name, base.model)
+        provider = CachingProvider(base, cache)
     explain = explainer or TemplateExplanationProvider()
-    analysis = analyze(result, run["sha256"], provider, explain, low_confidence)
-    warnings = parse_warnings + ([ABSTAIN_ISSUE] if analysis.abstained else [])
+    try:
+        analysis = analyze(result, run["sha256"], provider, explain, low_confidence, concurrency)
+    finally:
+        close = getattr(base, "close", None)
+        if callable(close):
+            close()
 
+    if analysis.retryable and not job.is_last_attempt:
+        # Keep the audit trail and any successful answers (the cache reuses them next attempt),
+        # then retry the job with backoff. On the last attempt these findings become
+        # "classification unavailable, review required" instead of blocking the snapshot.
+        with tenant_transaction(conn, job.tenant_id):
+            record_calls(conn, job.tenant_id, run_id, analysis)
+        raise RetryableJobError(f"{len(analysis.retryable)} classification call(s) hit a transient failure")
+
+    warnings = parse_warnings + ([ABSTAIN_ISSUE] if analysis.abstained else [])
     with tenant_transaction(conn, job.tenant_id):
-        record_analysis(conn, job.tenant_id, run_id, analysis, warnings, explain.name)
+        ran = not isinstance(base, UnavailableProvider)
+        record_analysis(conn, job.tenant_id, run_id, analysis, warnings, explain.name,
+                        base.name if ran else None, base.model if ran else None)
     log.info(
         "snapshot.analyzed",
         run_id=str(run_id),

@@ -9,6 +9,7 @@ Pure computation plus the provider call; persistence lives in cca.snapshots.proc
 from __future__ import annotations
 
 import hashlib
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from decimal import Decimal
 from typing import Any
@@ -47,6 +48,11 @@ class Analysis:
     model_status: ModelStatus | None
     abstained: bool
 
+    @property
+    def retryable(self) -> list[AnalyzedFinding]:
+        """Findings whose model call hit a transient failure (rate limit, overload, timeout)."""
+        return [f for f in self.findings if f.outcome.retryable]
+
 
 def _ctx(view: MonthlyView, result: ParseResult, detection: Detection, score: int) -> RunContext:
     baseline, current = detection.comparison or (None, (view.complete_months or view.months)[-1])
@@ -83,6 +89,7 @@ def analyze(
     provider: DecisionModelProvider,
     explainer: ExplanationProvider,
     low_confidence: float,
+    concurrency: int = 4,
 ) -> Analysis:
     view = build_monthly_view(result)
     detection = detect(view, file_sha256)
@@ -98,11 +105,16 @@ def analyze(
         labels_by_dimension.setdefault(dimension, []).append(label)
     aliases = Aliases.for_labels(labels_by_dimension)
 
+    packets = [build_packet(c, ctx, aliases) for c in detection.candidates]
+    shas = [packet_sha256(p) for p in packets]
+    # Jev evaluates each finding independently; calls run concurrently, results keep rank order.
+    with ThreadPoolExecutor(max_workers=max(1, concurrency)) as pool:
+        outcomes = list(pool.map(provider.classify, packets, shas))
+
     findings: list[AnalyzedFinding] = []
-    for rank, candidate in enumerate(detection.candidates, start=1):
-        packet = build_packet(candidate, ctx, aliases)
-        sha = packet_sha256(packet)
-        outcome = provider.classify(packet, sha)
+    for rank, (candidate, packet, sha, outcome) in enumerate(
+        zip(detection.candidates, packets, shas, outcomes, strict=True), start=1
+    ):
         decision = decide(candidate, outcome, ready.score, low_confidence)
         missing = _missing_order(candidate, outcome)
         card = explainer.explain(ExplanationInput(candidate, decision.final_category, result.currency, missing,
