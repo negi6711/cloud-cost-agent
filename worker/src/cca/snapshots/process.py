@@ -184,6 +184,10 @@ def process_snapshot(
     # ---- analyze + classify (only through the provider allowed by this run's consent)
     base = (provider_for or _no_model)(run["consent_basis"], job.attempts)
     provider: DecisionModelProvider = base
+    if isinstance(base, UnavailableProvider) and run["consent_basis"] == CONSENT_GRANTED:
+        # The prospect agreed and we still have no classifier: a deployment problem, not their
+        # choice. The report stays honest either way, so this log is the only way to find out.
+        log.warning("snapshot.classification_unavailable", run_id=str(run_id), reason=str(base.reason))
     if not isinstance(base, UnavailableProvider):
         with tenant_transaction(conn, job.tenant_id):
             _set_status(conn, run_id, "classifying")

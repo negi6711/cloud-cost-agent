@@ -89,6 +89,15 @@ class JobLoop:
 
 def default_handlers(settings: Settings) -> dict[str, Handler]:
     store = object_store(settings)
+    # Say it once at startup. A disabled classifier produces complete, honest, rule-based reports,
+    # which is exactly why nobody notices it was switched off by accident.
+    log.info(
+        "worker.classification",
+        enabled=settings.jev_enabled,
+        provider=settings.jev_provider if settings.jev_enabled else None,
+        model=settings.jev_model if settings.jev_enabled else None,
+        key_present=bool(settings.typesafe_api_key and settings.typesafe_api_key.get_secret_value()),
+    )
     return {
         "storage.delete": make_storage_delete_handler(store),
         "snapshot.process": make_handler(

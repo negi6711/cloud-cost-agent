@@ -71,8 +71,11 @@ services:
       - fromGroup: cca-shared
       - key: WORKER_ID
         value: render-worker
-      - key: JEV_ENABLED # true once the TypeSafe key is set and verified with cca.jev_smoke
-        value: "false"
+      # Dashboard-controlled, never declared with a value: a blueprint sync re-applies every value
+      # it declares, so a literal "false" here would silently switch classification off again on the
+      # next deploy. Set it to true in the Render dashboard once cca.jev_smoke passes.
+      - key: JEV_ENABLED
+        sync: false
       - key: JEV_PROVIDER
         value: typesafe
       - key: JEV_MODEL

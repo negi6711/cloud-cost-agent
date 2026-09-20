@@ -29,6 +29,8 @@ dev = [
     "mypy>=1.13",
     "boto3-stubs[s3]>=1.35",
     "httpx>=0.28.1",
+    "pyyaml>=6.0",  # reads render.yaml in tests/test_deploy_config.py
+    "types-pyyaml>=6.0",
 ]
 
 [build-system]

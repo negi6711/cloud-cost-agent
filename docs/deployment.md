@@ -45,7 +45,7 @@ or your local `.env`, never into chat or git.
    - `cca-shared`: `DATABASE_URL` (step 1.4), `R2_*` (step 2).
    - `cca-web`: `APP_BASE_URL` (its own https URL), `WORKER_URL` (the worker's https URL),
      `ADMIN_EMAILS` (your email), `RESEND_API_KEY`, `EMAIL_FROM`.
-   - `cca-worker`: leave `JEV_ENABLED=false` until the TypeSafe key is verified.
+   - `cca-worker`: `JEV_ENABLED` (set `false` until the TypeSafe key is verified), `TYPESAFE_API_KEY`.
 3. Deploy. Checks: `https://cca-worker…/healthz` returns `{"status":"ok"}`; the landing page loads.
 
 ## 5. Smoke test on staging
@@ -58,7 +58,13 @@ or your local `.env`, never into chat or git.
 ## 6. Later
 
 - **TypeSafe key:** set `TYPESAFE_API_KEY` on `cca-worker`, run `uv run python -m cca.jev_smoke` locally
-  with the same key first, then set `JEV_ENABLED=true`.
+  with the same key first, then set `JEV_ENABLED=true` in the dashboard.
+
+  Both are declared `sync: false` in `render.yaml` on purpose: a blueprint sync re-applies every
+  value the blueprint declares, so a literal `JEV_ENABLED: "false"` there would switch
+  classification back off on the next unrelated deploy — silently, because a rule-based report
+  looks complete. `worker/tests/test_deploy_config.py` fails if either one is given a value again,
+  and the worker logs `worker.classification` at startup so the state is visible in the Render log.
 - **Launch:** move both services to a paid instance type; verify a sending domain in Resend and set
   `EMAIL_FROM`; update the R2 CORS origin and `APP_BASE_URL` if the domain changes.
 
