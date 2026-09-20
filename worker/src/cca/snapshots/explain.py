@@ -40,6 +40,20 @@ class Card:
 
 # What is actually missing from a row that could not be attributed. The keys are dimension names;
 # anything else (including "mixed", where different rows are missing different things) falls back.
+# How to name the grouping a component came from, in a sentence.
+_COMPONENT_LABEL = {
+    "tag": "team tag",
+    "account": "account",
+    "region": "region",
+    "service": "service",
+    "usage_type": "usage type",
+    "instance_type": "instance type",
+    "operation": "API operation",
+    "charge_type": "charge type",
+    "cost_category": "cost category",
+    "availability_zone": "availability zone",
+}
+
 _UNALLOCATED_GAP = {
     "tag": "team tag",
     "account": "account",
@@ -135,6 +149,13 @@ class TemplateExplanationProvider:
                 share = min(Decimal(1), c.delta / data.total_change)
                 know.append(Statement(f"It accounts for {percent(share)} of the whole bill's increase between "
                                       f"those months."))
+            for part in c.components:
+                # The same rows seen through another grouping, so this narrows the movement down
+                # rather than adding to it.
+                where = _COMPONENT_LABEL.get(part.dimension, part.dimension.replace("_", " "))
+                know.append(Statement(
+                    f"All of it is {part.label} ({where})." if part.share >= Decimal("0.99")
+                    else f"{money(part.delta, cur)} of it ({percent(part.share)}) is {part.label} ({where})."))
 
         if not data.ownership_visible and c.kind is not FindingKind.UNALLOCATED:
             know.append(Statement("No team or allocation tag is present in this export, so the owner is not visible."))

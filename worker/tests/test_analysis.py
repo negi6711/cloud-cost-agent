@@ -153,14 +153,21 @@ def test_single_value_breakdowns_add_no_findings() -> None:
     assert {f.candidate.dimension for f in a.findings} == {"service"}
 
 
-def test_account_breakdown_with_several_accounts_is_used() -> None:
+def test_an_account_breakdown_narrows_the_finding_instead_of_repeating_it() -> None:
+    """EC2 rose $2,100 and nearly all of it is in one account. That is one movement: the finding is
+    the service, and the account says where inside it the money went."""
     lines = ["Date,Service,Linked account,Cost,Currency"]
     for month, prod, dev in (("2026-06-01", "5000", "1000"), ("2026-07-01", "5100", "3000")):
         lines += [f"{month},EC2,111111111111,{prod},USD", f"{month},EC2,222222222222,{dev},USD"]
     a = run(("\n".join(lines) + "\n").encode())
-    acct = [f for f in a.findings if f.candidate.dimension == "account"]
-    assert [f.candidate.label for f in acct] == ["222222222222"]
-    assert acct[0].packet["finding"]["label"] == "acct_02"
+
+    assert [f.candidate.label for f in a.findings] == ["EC2"]
+    [component] = a.findings[0].candidate.components
+    assert (component.dimension, component.label, component.delta) == ("account", "222222222222", Decimal("2000"))
+    assert component.share == Decimal("0.9524")  # of EC2's $2,100 increase
+    assert "$2,000.00 of it (95.2%) is 222222222222 (account)." in [
+        st.text for st in a.findings[0].card.what_we_know
+    ]
 
 
 # ---------------------------------------------------------------- packet ---
@@ -226,14 +233,21 @@ def test_categories_are_limited_to_the_four_live_decisions() -> None:
 # ----------------------------------------------- multi-dimension exports ---
 
 
-def test_one_movement_described_by_several_dimensions_is_reported_once() -> None:
-    """In this export prod-main, us-east-1 and the Platform team are the same two rows. Reporting
-    each as its own finding would make one increase look like three."""
+def test_one_movement_is_one_finding_however_many_groupings_describe_it() -> None:
+    """This export groups by service, account, region, usage type and team at once. With a finding
+    per grouping, a single $3,000 increase read as five separate decisions."""
     a = fixture("cur_camelcase.csv")
     labels = [f.candidate.label for f in a.findings]
-    assert "Platform" in labels  # a team name is the most useful heading for those rows
-    assert "prod-main" not in labels and "us-east-1" not in labels
     assert len(labels) == len(set(labels))
+    assert {f.candidate.dimension for f in a.findings} == {"service"}
+    assert "prod-main" not in labels and "us-east-1" not in labels and "Platform" not in labels
+
+    # The other groupings survive as evidence inside the finding, one per grouping, largest first.
+    ec2 = next(f for f in a.findings if f.candidate.label == "Amazon EC2")
+    assert {c.dimension: c.label for c in ec2.candidate.components} == {
+        "account": "prod-main", "region": "us-east-1", "tag": "Platform",
+    }
+    assert all(c.delta <= ec2.candidate.delta for c in ec2.candidate.components)
 
 
 def test_the_teaser_figure_never_exceeds_the_whole_bill_increase() -> None:

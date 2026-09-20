@@ -27,7 +27,6 @@ UNALLOCATED_SHARE = Decimal("0.10")
 HIGH_SEVERITY_MULTIPLE = Decimal("3")
 # Findings sent for classification and shown on the snapshot.
 MAX_FINDINGS = 10
-MAX_SECONDARY_DIMENSION_FINDINGS = 3
 # Below this data-readiness score the policy gate forces REQUEST_EVIDENCE.
 READINESS_REQUEST_EVIDENCE_BELOW = 50
 

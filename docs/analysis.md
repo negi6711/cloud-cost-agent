@@ -23,7 +23,19 @@ user.
 | New service | first charge this month and ≥ 5% of this month's spend (or absolutely material) |
 | Unallocated spend | catch-all labels (`No tag key…`, `Others`) ≥ 10% of this month |
 | Severity | high ≥ 3× absolute threshold; medium ≥ 1×; else low |
-| Findings | at most 10; secondary dimensions (account, region) at most 3 each, and only when they have ≥ 2 values |
+| Findings | at most 10, all from the grouping the export is built around (its primary dimension) |
+| Components | up to 3 per finding, one per other grouping, each explaining ≥ 15% of the movement |
+
+### One movement, one finding
+
+Every row has exactly one value in the primary grouping, so movements in it partition the bill and
+none of them restates another. The export's other groupings describe the *same rows* from a
+different angle: an account, a region and a team tag can all be another way of saying "EC2 went up".
+They are therefore folded into the finding as **components** — "$7,690.21 of it (67.3%) is
+g5.48xlarge OnDemand (usage type)" — rather than ranked as decisions of their own. A grouping with a
+single value across the export is skipped: "all of it is in the only account you have" is not a
+fact. Before this, a $19,198 increase on one service could appear as five findings whose shares of
+the bill's increase summed past 100%.
 
 ## Findings and default categories (before any model)
 

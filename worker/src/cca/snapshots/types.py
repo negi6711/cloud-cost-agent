@@ -13,6 +13,18 @@ from decimal import Decimal
 from enum import StrEnum
 
 
+@dataclass(frozen=True)
+class Component:
+    """Part of a movement, described by a different grouping: "of the +$19,198 on Amazon EC2,
+    +$9,627 was EBS:gp3". Amounts come from the same rows, so they never add to more than the
+    movement itself."""
+
+    dimension: str
+    label: str
+    delta: Decimal
+    share: Decimal  # of the parent finding's delta
+
+
 class Category(StrEnum):
     INVESTIGATE = "INVESTIGATE"
     REQUEST_EVIDENCE = "REQUEST_EVIDENCE"
@@ -98,6 +110,9 @@ class Candidate:
     missing_evidence: tuple[MissingEvidence, ...]
     history: tuple[tuple[date, Decimal], ...]  # oldest first, up to 6 months
     source_refs: tuple[str, ...]  # positions in the uploaded file, e.g. "L5:C7"
+    #: What this movement is made of, seen through the other groupings in the same export. These are
+    #: slices of the same rows, so they are evidence inside one finding, never findings of their own.
+    components: tuple[Component, ...] = ()
 
     @property
     def material(self) -> bool:

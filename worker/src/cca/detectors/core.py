@@ -3,22 +3,34 @@
 from __future__ import annotations
 
 import hashlib
-from dataclasses import dataclass, field
+from collections import defaultdict
+from collections.abc import Sequence
+from dataclasses import dataclass, field, replace
 from datetime import date
 from decimal import Decimal
 
 from cca.detectors.thresholds import (
     HIGH_SEVERITY_MULTIPLE,
     MAX_FINDINGS,
-    MAX_SECONDARY_DIMENSION_FINDINGS,
     Thresholds,
     thresholds_for,
 )
 from cca.normalization.monthly import Key, MonthlyView
-from cca.snapshots.types import Candidate, Category, FindingKind, MissingEvidence, Severity
+from cca.parsers.model import CostRecord
+from cca.snapshots.types import (
+    Candidate,
+    Category,
+    Component,
+    FindingKind,
+    MissingEvidence,
+    Severity,
+)
 
 HISTORY_MONTHS = 6
 MAX_REFS = 20
+# A component has to explain a real part of the movement to be worth a line in the card.
+COMPONENT_MIN_SHARE = Decimal("0.15")
+MAX_COMPONENTS = 3
 _CENT = Decimal("0.01")
 _PCT = Decimal("0.0001")
 
@@ -102,7 +114,7 @@ def _severity(delta: Decimal, t: Thresholds) -> Severity:
     return Severity.LOW
 
 
-def detect(view: MonthlyView, file_sha256: str) -> Detection:
+def detect(view: MonthlyView, file_sha256: str, records: Sequence[CostRecord] = ()) -> Detection:
     comparison = view.comparison()
     current_month = comparison[1] if comparison else (view.complete_months or view.months)[-1]
     current_total = view.totals.get(current_month, Decimal(0))
@@ -117,18 +129,17 @@ def detect(view: MonthlyView, file_sha256: str) -> Detection:
         for dimension in view.dimensions:
             rows = _changes(view, dimension, baseline_month, current_month)
             largest[dimension] = [r for r in rows if r.delta > 0][:5]
-            # A breakdown with a single value (one account, one region) only repeats the whole-bill
-            # change; it cannot point anywhere, so it yields no findings of its own.
-            if dimension != view.primary_dimension and len(view.keys(dimension)) < 2:
+            # Findings come from the grouping the export is built around. Every row has exactly one
+            # value in it, so those movements partition the bill and none of them restates another.
+            # The other groupings describe the same rows from a different angle: they become
+            # composition inside a finding (below), not findings of their own.
+            if dimension != view.primary_dimension:
                 continue
-            dim_candidates = [
+            candidates.extend(
                 c
                 for r in rows
                 if (c := _increase_candidate(view, r, baseline_month, current_month, current_total, t, file_sha256))
-            ]
-            if dimension != view.primary_dimension:
-                dim_candidates = dim_candidates[:MAX_SECONDARY_DIMENSION_FINDINGS]
-            candidates.extend(dim_candidates)
+            )
 
     unallocated_amount, unallocated_share = None, None
     if view.unallocated:
@@ -138,55 +149,69 @@ def detect(view: MonthlyView, file_sha256: str) -> Detection:
             candidates.append(_unallocated_candidate(view, current_month, comparison, unallocated_amount,
                                                      unallocated_share, t, file_sha256))
 
-    candidates.sort(key=lambda c: _rank_key(c, view.primary_dimension))
-    candidates = _drop_restatements(view, candidates, comparison)
+    candidates.sort(key=_rank_key)
+    kept = candidates[:MAX_FINDINGS]
+    if comparison and records:
+        # A grouping with a single value across the whole export (one account, one region) cannot
+        # narrow anything down: "100% of it is in the only account you have" is not a fact.
+        informative = {d for d in view.dimensions if d != view.primary_dimension and len(view.keys(d)) > 1}
+        kept = _with_components(kept, records, comparison, view.primary_dimension, informative)
     notes = [] if comparison else ["no_comparison"]
-    return Detection(t, comparison, candidates[:MAX_FINDINGS], top, largest, unallocated_share, unallocated_amount, notes)
+    return Detection(t, comparison, kept, top, largest, unallocated_share, unallocated_amount, notes)
 
 
-# Which heading describes a movement best when several describe it equally well. The group-by the
-# export was built around comes first; an ownership tag names a team, which beats an account number.
-_DIMENSION_PREFERENCE = ("tag", "service", "account", "region", "usage_type")
+def _with_components(
+    candidates: list[Candidate],
+    records: Sequence[CostRecord],
+    comparison: tuple[date, date],
+    primary: str,
+    informative: set[str],
+) -> list[Candidate]:
+    """Describe each movement through the export's other groupings, from the same rows.
 
-
-def _dimension_preference(dimension: str, primary: str) -> int:
-    if dimension == primary:
-        return 0
-    if dimension in _DIMENSION_PREFERENCE:
-        return 1 + _DIMENSION_PREFERENCE.index(dimension)
-    return 1 + len(_DIMENSION_PREFERENCE)
-
-
-def _rank_key(c: Candidate, primary: str) -> tuple[int, Decimal, int, str]:
-    # Material changes first, then by size of the change (or amount, for unallocated spend).
-    return (0 if c.material_absolute else 1, -c.delta, _dimension_preference(c.dimension, primary), c.evidence_id)
-
-
-def _row_set(view: MonthlyView, key: Key, months: list[date]) -> frozenset[str]:
-    """Every source row behind one key over the compared months (untruncated, unlike source_refs)."""
-    refs: set[str] = set()
-    for m in months:
-        refs.update(view.refs.get(key, {}).get(m, []))
-    return frozenset(refs)
-
-
-def _drop_restatements(view: MonthlyView, candidates: list[Candidate], comparison: tuple[date, date] | None) -> list[Candidate]:
-    """One movement can be described by several dimensions at once: "us-west-2 up $125,103.92" and
-    "999999999999 up $125,103.92" are the same rows under different headings. Keep the best-ranked
-    description and drop the exact restatements. Overlapping-but-different sets are left alone: a
-    service inside a team's spend is a narrower fact, not a repetition."""
-    if comparison is None:
-        return candidates
-    months = [comparison[0], comparison[1]]
-    kept: list[Candidate] = []
-    seen: list[frozenset[str]] = []
-    for c in candidates:
-        rows = _row_set(view, (c.dimension, c.label), months)
-        if rows and rows in seen:
+    One pass over the two compared months, bucketed by the primary label, so the cost does not grow
+    with the number of findings. A component is kept only when it explains a real share of the
+    movement; three at most, largest first, one per grouping so the same money is not listed twice.
+    """
+    baseline_month, current_month = comparison
+    wanted = {c.label for c in candidates if c.dimension == primary}
+    by_label: dict[str, list[CostRecord]] = {label: [] for label in wanted}
+    for record in records:
+        month = record.period_start.replace(day=1)
+        if month not in (baseline_month, current_month):
             continue
-        kept.append(c)
-        seen.append(rows)
-    return kept
+        label = record.dimension(primary)
+        if label in by_label:
+            by_label[label].append(record)
+
+    out: list[Candidate] = []
+    for candidate in candidates:
+        rows = by_label.get(candidate.label) if candidate.dimension == primary else None
+        if not rows or candidate.delta <= 0:
+            out.append(candidate)
+            continue
+        sums: dict[Key, dict[date, Decimal]] = defaultdict(lambda: defaultdict(Decimal))
+        for record in rows:
+            month = record.period_start.replace(day=1)
+            for dimension, label in record.dimensions:
+                if dimension in informative:
+                    sums[(dimension, label)][month] += record.cost
+        best: dict[str, Component] = {}
+        for (dimension, label), months in sums.items():
+            delta = months.get(current_month, Decimal(0)) - months.get(baseline_month, Decimal(0))
+            share = (delta / candidate.delta).quantize(_PCT)
+            if delta <= 0 or share < COMPONENT_MIN_SHARE:
+                continue
+            if dimension not in best or delta > best[dimension].delta:
+                best[dimension] = Component(dimension, label, delta, share)
+        components = sorted(best.values(), key=lambda c: -c.delta)[:MAX_COMPONENTS]
+        out.append(replace(candidate, components=tuple(components)))
+    return out
+
+
+def _rank_key(c: Candidate) -> tuple[int, Decimal, str]:
+    # Material changes first, then by size of the change (or amount, for unallocated spend).
+    return (0 if c.material_absolute else 1, -c.delta, c.evidence_id)
 
 
 def _top_items(view: MonthlyView) -> list[tuple[str, Decimal, Decimal]]:

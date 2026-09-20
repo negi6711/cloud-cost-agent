@@ -93,7 +93,7 @@ def analyze(
     noul_margin: float = 0.3,
 ) -> Analysis:
     view = build_monthly_view(result)
-    detection = detect(view, file_sha256)
+    detection = detect(view, file_sha256, result.records)
     ready = readiness(result, detection)
     ctx = _ctx(view, result, detection, ready.score)
     ownership_visible = bool(set(result.dimensions_available) & _OWNERSHIP_DIMENSIONS)
