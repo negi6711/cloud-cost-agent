@@ -128,6 +128,26 @@ def test_unallocated_spend_is_one_finding_not_two() -> None:
     assert f.decision.final_category is Category.REQUEST_EVIDENCE
 
 
+def test_the_unallocated_card_names_the_gap_not_the_labels() -> None:
+    """The rows behind this finding are the ones with no label, so listing labels was both wrong and
+    a way to spray the file's own text across the report."""
+    a = fixture("valid_cost_explorer_by_tag.csv")
+    [f] = a.findings
+    assert f.candidate.label == "unallocated"
+    assert "no team tag" in f.card.what_changed and "cannot say who owns it" in f.card.what_changed
+    # None of the file's own labels may appear: the rows behind this finding are the unlabelled ones.
+    for label in ("platform", "data", "No tag key", "(blank)"):
+        assert label not in f.card.what_changed
+
+
+def test_source_references_are_listed_in_file_order() -> None:
+    a = fixture("valid_long_format.csv")
+    for f in a.findings:
+        refs = [int(r.lstrip("L").split(":C")[0]) for r in f.candidate.source_refs]
+        assert refs == sorted(refs), f"{f.candidate.label}: {f.candidate.source_refs}"
+        assert len(refs) == len(set(f.candidate.source_refs))
+
+
 def test_single_value_breakdowns_add_no_findings() -> None:
     a = fixture("valid_long_format.csv")  # one account, one region
     assert {f.candidate.dimension for f in a.findings} == {"service"}

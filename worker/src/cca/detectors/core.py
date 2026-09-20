@@ -80,11 +80,18 @@ def _history(view: MonthlyView, key: Key, current: date) -> tuple[tuple[date, De
     return tuple((m, view.cost(key, m)) for m in months)
 
 
+def _ref_order(ref: str) -> tuple[int, int]:
+    """"L12:C3" -> (12, 3). Source references are evidence a reader checks against their own file,
+    so they are shown in file order rather than in whatever order the months were walked."""
+    line, _, column = ref.lstrip("L").partition(":C")
+    return (int(line) if line.isdigit() else 0, int(column) if column.isdigit() else 0)
+
+
 def _refs(view: MonthlyView, key: Key, months: list[date]) -> tuple[str, ...]:
-    refs: list[str] = []
+    refs: set[str] = set()
     for m in months:
-        refs.extend(view.refs.get(key, {}).get(m, []))
-    return tuple(refs[:MAX_REFS])
+        refs.update(view.refs.get(key, {}).get(m, []))
+    return tuple(sorted(refs, key=_ref_order)[:MAX_REFS])
 
 
 def _severity(delta: Decimal, t: Thresholds) -> Severity:
@@ -273,14 +280,16 @@ def _unallocated_candidate(
     baseline_month = comparison[0] if comparison else None
     baseline = view.unallocated_totals.get(baseline_month, Decimal(0)) if baseline_month else None
     delta = amount - baseline if baseline is not None else Decimal(0)
-    refs: list[str] = []
+    refs: set[str] = set()
     for k in keys:
-        refs.extend(view.refs.get(k, {}).get(month, []))
+        refs.update(view.refs.get(k, {}).get(month, []))
     return Candidate(
         evidence_id=evidence_id(file_sha256, FindingKind.UNALLOCATED, key, month),
         kind=FindingKind.UNALLOCATED,
         dimension=key[0],
-        label=", ".join(k[1] for k in keys)[:200],
+        # One short word, not a list: the dimension says where the gap is, and the labels of rows
+        # that have no label are not information.
+        label="unallocated",
         current_month=month,
         baseline_month=baseline_month,
         current=amount,
@@ -294,5 +303,5 @@ def _unallocated_candidate(
         default_category=Category.REQUEST_EVIDENCE,
         missing_evidence=_MISSING[FindingKind.UNALLOCATED],
         history=tuple((m, view.unallocated_totals.get(m, Decimal(0))) for m in view.months if m <= month)[-HISTORY_MONTHS:],
-        source_refs=tuple(refs[:MAX_REFS]),
+        source_refs=tuple(sorted(refs, key=_ref_order)[:MAX_REFS]),
     )

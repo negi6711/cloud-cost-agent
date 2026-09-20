@@ -69,7 +69,7 @@ def main(folder: str) -> None:
 
     print(f"\n{'file':<5}{'finding':<30}{'rules':<18}{'jev':<18}{'final':<18}{'conf':<7}{'review'}")
     agree = Counter[str]()
-    for name, label, rule, jev, final, conf, review, reasons in rows:
+    for name, label, rule, jev, final, conf, review, _reasons in rows:
         flag = "same" if rule == jev else "DIFFERENT"
         agree[flag] += 1
         agree["overridden"] += 1 if jev not in ("-", final) else 0

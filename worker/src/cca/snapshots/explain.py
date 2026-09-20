@@ -38,6 +38,18 @@ class Card:
     source: str
 
 
+# What is actually missing from a row that could not be attributed. The keys are dimension names;
+# anything else (including "mixed", where different rows are missing different things) falls back.
+_UNALLOCATED_GAP = {
+    "tag": "team tag",
+    "account": "account",
+    "region": "region",
+    "service": "service name",
+    "usage_type": "usage type",
+    "cost_category": "cost category",
+}
+
+
 @dataclass(frozen=True)
 class ExplanationInput:
     candidate: Candidate
@@ -107,8 +119,9 @@ class TemplateExplanationProvider:
             know.append(Statement(f"Billing data shows {money(c.current, cur)} in {month}.", c.source_refs))
         elif c.kind is FindingKind.UNALLOCATED:
             title = f"{percent(c.share_of_current)} of {month} spend has no owner allocation"
-            what = (f"{money(c.current, cur)} ({percent(c.share_of_current)}) of {month} spend is not attributed "
-                    f"to any {c.dimension.replace('_', ' ')} value ({c.label}).")
+            where = _UNALLOCATED_GAP.get(c.dimension, "value in one or more of its grouping columns")
+            what = (f"{money(c.current, cur)} ({percent(c.share_of_current)}) of {month} spend sits on rows with "
+                    f"no {where}, so the export cannot say who owns it.")
             know.append(Statement(f"Unallocated spend in {month}: {money(c.current, cur)}.", c.source_refs))
         else:
             assert c.baseline is not None and c.baseline_month is not None

@@ -288,6 +288,9 @@ function TeaserPanel({
   const currency = teaser.currency;
   const rising = teaser.change !== null && Number(teaser.change) > 0;
   const impact = Number(teaser.investigationImpact) > 0 ? teaser.investigationImpact : null;
+  // Without two consecutive complete months there is nothing to compare, and saying "none material"
+  // would read as "nothing to worry about" when the truth is "we could not check".
+  const comparable = teaser.change !== null && teaser.baselineMonth !== null && teaser.currentMonth !== null;
 
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -332,20 +335,25 @@ function TeaserPanel({
       <section aria-labelledby="teaser-heading" className="rounded-xl border border-border bg-white p-5 sm:p-8">
         <p className="text-sm font-medium text-accent">Calculated from your file</p>
         <h2 id="teaser-heading" className="mt-1 text-2xl font-semibold">
-          {teaser.change !== null && teaser.baselineMonth && teaser.currentMonth ? (
+          {comparable ? (
             <>
               Your spend {rising ? "increased" : "changed"} by {money(teaser.change, currency)}
-              {teaser.changePct ? ` (${pct(teaser.changePct)})` : ""} in {monthLabel(teaser.currentMonth)}
+              {teaser.changePct ? ` (${pct(teaser.changePct)})` : ""} in {monthLabel(teaser.currentMonth!)}
             </>
           ) : (
             <>{money(teaser.totalCovered, currency)} of spend analyzed</>
           )}
         </h2>
-        {teaser.baselineMonth && teaser.currentMonth && (
-          <p className="mt-2 text-sm text-muted">
-            Compared with {monthLabel(teaser.baselineMonth)}, the previous comparable period in your file.
-          </p>
-        )}
+        <p className="mt-2 text-sm text-muted">
+          {comparable ? (
+            <>Compared with {monthLabel(teaser.baselineMonth!)}, the previous comparable period in your file.</>
+          ) : (
+            <>
+              This export does not contain two consecutive complete months, so there is nothing to compare
+              it against yet. Export at least two full months to see what changed.
+            </>
+          )}
+        </p>
 
         <dl className="mt-6 grid gap-4 sm:grid-cols-3">
           <div className="rounded-lg bg-subtle p-4">
@@ -355,7 +363,9 @@ function TeaserPanel({
           <div className="rounded-lg bg-subtle p-4">
             <dt className="text-xs font-medium uppercase tracking-wide text-muted">Largest driver</dt>
             <dd className="mt-1 text-lg font-semibold">
-              {teaser.topDriver ? (
+              {!comparable ? (
+                "Needs two complete months"
+              ) : teaser.topDriver ? (
                 <>
                   {teaser.topDriver.label}{" "}
                   <span className="whitespace-nowrap">+{money(teaser.topDriver.change, currency)}</span>
@@ -370,7 +380,7 @@ function TeaserPanel({
               Cost impact to investigate
             </dt>
             <dd className="mt-1 text-lg font-semibold">
-              {impact ? `Up to ${money(impact, currency)}` : "None material"}
+              {!comparable ? "Not calculated" : impact ? `Up to ${money(impact, currency)}` : "None material"}
             </dd>
           </div>
         </dl>
