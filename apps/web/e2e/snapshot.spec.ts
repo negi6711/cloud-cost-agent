@@ -39,6 +39,10 @@ test("a consented snapshot shows facts, labelled classification, and decision ca
     expect(await card.innerText()).not.toMatch(/\b(resize|delete|terminate|shut down|purchase|buy)\b/i);
   }
 
+  // Said once for the whole report, not repeated under every card.
+  await expect(page.getByText(/Every finding below needs a person to confirm it/)).toHaveCount(1);
+  await expect(page.getByText("Read this one with extra care")).toHaveCount(0);
+
   await expect(page.getByRole("region", { name: "Known limitations" })).toContainText("not guaranteed savings");
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
   expect(overflow).toBeLessThanOrEqual(0);
@@ -50,7 +54,7 @@ test("without consent the snapshot is rule-based and says so", async ({ page }, 
   await expect(page.getByText(/You did not allow model-assisted classification/).first()).toBeVisible();
   const ecs = page.getByRole("article", { name: "New service: Amazon Elastic Container Service" });
   await expect(ecs).toContainText("Rule-based: no model classified this finding.");
-  await expect(ecs).toContainText("Human review required");
+  await expect(ecs).toContainText("Read this one with extra care");
   await expect(ecs).toContainText("You did not allow model-assisted classification, so this finding is rule-based.");
 });
 

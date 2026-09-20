@@ -166,6 +166,12 @@ export default async function SnapshotPage({ params }: PageProps<"/snapshot/[id]
               · {d.findings.length} finding{d.findings.length === 1 ? "" : "s"}, ranked
             </span>
           </h2>
+          <p className="mt-2 text-sm leading-6 text-muted">
+            Every finding below needs a person to confirm it before anyone acts. A bill can show what
+            moved; it cannot show whether a change was intended, who owns it, or whether anything is
+            safe to alter. Where a finding needs more care than that, it says so at the bottom of its
+            card.
+          </p>
           <div className="mt-4 space-y-6">
             {d.findings.map((f) => (
               <FindingCard key={f.evidenceId} finding={f} modelLabel={modelLabel(d)} />

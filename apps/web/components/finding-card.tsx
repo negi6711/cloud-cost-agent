@@ -1,4 +1,4 @@
-import { CATEGORY_STYLE, CATEGORY_TEXT, reasonText } from "@/lib/reasons";
+import { CATEGORY_STYLE, CATEGORY_TEXT, notableReasons, reasonText } from "@/lib/reasons";
 import type { FindingView } from "@/lib/snapshot-detail";
 
 interface Props {
@@ -13,6 +13,9 @@ interface Props {
  */
 export function FindingCard({ finding: f, modelLabel }: Props) {
   const overridden = f.model && f.model.category !== f.finalCategory;
+  // The report says once, at the top, that every finding needs human confirmation. This footer is
+  // for the reasons that single THIS finding out; when there are none, it stays quiet.
+  const reasons = notableReasons(f.policyReasons, f.model?.confidence ?? null);
   return (
     <article
       aria-label={f.title}
@@ -92,20 +95,16 @@ export function FindingCard({ finding: f, modelLabel }: Props) {
         </section>
       </div>
 
-      <footer className="border-t border-border px-5 py-3 text-xs" aria-label="Human review">
-        {f.reviewRequired ? (
-          <div>
-            <p className="font-semibold text-foreground">Human review required</p>
-            <ul className="mt-1 list-disc space-y-0.5 pl-5 text-muted">
-              {f.policyReasons.map((r) => (
-                <li key={r}>{reasonText(r)}</li>
-              ))}
-            </ul>
-          </div>
-        ) : (
-          <p className="text-muted">Status: awaiting human review before anyone acts.</p>
-        )}
-      </footer>
+      {reasons.length > 0 && (
+        <footer className="border-t border-border px-5 py-3 text-xs" aria-label="Human review">
+          <p className="font-semibold text-foreground">Read this one with extra care</p>
+          <ul className="mt-1 list-disc space-y-0.5 pl-5 text-muted">
+            {reasons.map((r) => (
+              <li key={r}>{reasonText(r)}</li>
+            ))}
+          </ul>
+        </footer>
+      )}
     </article>
   );
 }

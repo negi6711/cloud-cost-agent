@@ -21,6 +21,29 @@ export function reasonText(code: string): string {
   return REASONS[code] ?? "This finding needs a person to review it.";
 }
 
+/**
+ * Which reasons are worth printing on a card.
+ *
+ * Every finding in a billing-only snapshot needs human confirmation, and the report says so once,
+ * at the top. Repeating it on each card taught the reader to skip the whole section, which buried
+ * the rare reasons that do single a finding out. Measured over the Day 7 corpus (58 findings):
+ * "the model suggested a person review this" fired 58 times and a materiality disagreement twice.
+ *
+ * So: drop the constant one, keep anything about our rules or a missing classifier, and keep a
+ * low-confidence note only when the model was barely better than a coin toss.
+ */
+const BARELY_BETTER_THAN_GUESSING = 0.35;
+
+export function notableReasons(codes: string[], confidence: number | null): string[] {
+  return codes.filter((code) => {
+    if (code === "model_requested_review") return false;
+    if (code.startsWith("low_confidence:")) {
+      return confidence !== null && confidence < BARELY_BETTER_THAN_GUESSING;
+    }
+    return true;
+  });
+}
+
 export const CATEGORY_TEXT: Record<string, string> = {
   INVESTIGATE: "Investigate",
   REQUEST_EVIDENCE: "Request evidence",

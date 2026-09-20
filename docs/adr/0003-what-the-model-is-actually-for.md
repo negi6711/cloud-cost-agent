@@ -1,7 +1,6 @@
 # ADR 0003: Keep what our rules decided, so we can tell what the model is for
 
-Status: accepted (2026-09-20). Decision 1 is implemented; decision 2 is open and needs a product
-call.
+Status: accepted (2026-09-20). Both decisions are implemented.
 
 ## Context
 
@@ -51,7 +50,7 @@ the rest of the finding (migration 0012). The report names it when it differs fr
 suggestion: "Without the model, our rules alone would have said X." The founder can now run the
 agreement query on real customer runs, not only on fixtures.
 
-## Decision 2 (open): the review flag carries no information
+## Decision 2 (implemented): say it once, not 58 times
 
 A flag that is true for every finding tells a reader nothing. Three ways out, in preference order:
 
@@ -65,7 +64,20 @@ A flag that is true for every finding tells a reader nothing. Three ways out, in
 3. **Drop `model_requested_review` as a trigger** since it is constant at this model version. Keeps
    the other triggers honest, but silently discards a signal that may become informative later.
 
-Option 1 is recommended. None of these weaken the gate: the categories it publishes do not change.
+Option 1 was taken, in the presentation layer only. The gate is unchanged: it still evaluates every
+trigger, `review_required` and the full `policy_reasons` list are still stored on every finding, and
+the categories it publishes do not change. What changed is what the report prints:
+
+* The report states once, above the findings, that every finding needs a person to confirm it
+  before anyone acts, and why — a bill cannot show intent, ownership or safety.
+* A card prints a footer only when something singles it out: our rules overriding the model, a
+  missing classifier, or confidence below 0.35 (`notableReasons` in `apps/web/lib/reasons.ts`).
+  `model_requested_review` is never printed, because at this model version it is constant.
+* The footer's heading is "Read this one with extra care", which is a claim about this finding
+  rather than a status every finding shares.
+
+On the Day 7 corpus this takes the per-card notice from 58 of 58 findings to roughly 17 — the two
+materiality disagreements and the fifteen findings where the model was barely better than guessing.
 
 ## Consequences
 
