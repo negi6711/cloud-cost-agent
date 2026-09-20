@@ -68,6 +68,12 @@ export function FindingCard({ finding: f, modelLabel }: Props) {
                 Likely owner: {f.model.ownerLabel ?? "unknown"} · urgency {f.model.urgency ?? "n/a"} · risk of acting
                 without more evidence {f.model.risk ?? "n/a"}.
               </p>
+              {f.ruleCategory && f.ruleCategory !== f.model.category && (
+                <p className="text-muted">
+                  Without the model, our rules alone would have said{" "}
+                  <strong>{CATEGORY_TEXT[f.ruleCategory] ?? f.ruleCategory}</strong>.
+                </p>
+              )}
               {overridden && (
                 <p>
                   Our rules set the category to <strong>{CATEGORY_TEXT[f.finalCategory]}</strong> instead.

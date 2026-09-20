@@ -284,6 +284,9 @@ export const snapshotFinding = pgTable(
     owner: text("owner"),
     evidence: jsonb("evidence").notNull().default([]),
     missingEvidence: jsonb("missing_evidence").notNull().default([]),
+    // What our own rules decided before the model was consulted. Kept so we can answer, run after
+    // run, whether the model changes any decision or only restates ours (ADR 0003).
+    ruleCategory: text("rule_category"),
     jevCategory: text("jev_category"),
     jevOwner: text("jev_owner"),
     jevUrgency: text("jev_urgency"),

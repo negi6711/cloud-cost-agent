@@ -65,7 +65,7 @@ def fixed(p: DecisionModelProvider) -> Any:
 
 def findings(owner: Any, run_id: Any) -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = owner.execute(
-        "SELECT rank, jev_category, jev_owner, jev_confidence, final_category, model_status, policy_status, "
+        "SELECT rank, rule_category, jev_category, jev_owner, jev_confidence, final_category, model_status, policy_status, "
         "policy_reasons, review_required, owner FROM snapshot_finding WHERE snapshot_run_id = %s ORDER BY rank",
         (run_id,)).fetchall()
     return rows
@@ -86,6 +86,10 @@ def test_consented_run_is_classified_and_every_call_recorded(seed, owner, app_co
         ("INVESTIGATE", "INVESTIGATE", "JEV_SUCCEEDED"),  # Tax: the model's answer, kept (not high severity)
     ]
     assert rows[0]["owner"] == "Platform / Infrastructure" and rows[0]["jev_owner"] == "platform_infrastructure"
+    # What our rules decided on their own is kept beside the model's answer, so a later run can be
+    # asked whether the model changed any decision or only restated ours.
+    assert [r["rule_category"] for r in rows] == ["REQUEST_EVIDENCE", "MONITOR"]
+    assert rows[1]["rule_category"] != rows[1]["jev_category"]  # the model moved this one
     assert len(stub.calls) == 2
 
     calls = owner.execute("SELECT provider, model_requested, model_reported, request_id, status, input_tokens, "

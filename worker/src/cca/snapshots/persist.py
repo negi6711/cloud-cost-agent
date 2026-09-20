@@ -16,7 +16,7 @@ from cca.snapshots.types import MISSING_EVIDENCE_LABELS, OWNER_LABELS
 _FINDING_COLUMNS = (
     "tenant_id, snapshot_run_id, evidence_id, rank, kind, category, severity, title, explanation, "
     "observed_value, baseline_value, delta_value, owner, evidence, missing_evidence, "
-    "jev_category, jev_owner, jev_urgency, jev_risk, jev_confidence, jev_probabilities, "
+    "rule_category, jev_category, jev_owner, jev_urgency, jev_risk, jev_confidence, jev_probabilities, "
     "model_evidence_ids, model_status, final_category, policy_status, policy_reasons, review_required, "
     "explanation_source, next_action"
 )
@@ -41,6 +41,7 @@ def _finding_values(tenant_id: UUID, run_id: UUID, f: AnalyzedFinding) -> tuple[
         OWNER_LABELS[cls.owner] if cls else None,
         Jsonb([{"text": s.text, "refs": list(s.refs)} for s in card.what_we_know]),
         Jsonb([{"code": m.value, "label": MISSING_EVIDENCE_LABELS[m]} for m in card.missing]),
+        c.default_category.value,
         cls.category.value if cls else None,
         cls.owner.value if cls else None,
         cls.urgency.label if cls else None,
@@ -97,7 +98,7 @@ def record_analysis(
     """Call inside a tenant transaction. Idempotent per (run, evidence_id): the deterministic teaser
     phase inserts, and the unlock phase updates the same rows with the classification."""
     record_calls(conn, tenant_id, run_id, analysis)
-    placeholders = ", ".join(["%s"] * 29)
+    placeholders = ", ".join(["%s"] * len(_FINDING_COLUMNS.split(", ")))
     for f in analysis.findings:
         updates = ", ".join(
             f"{c} = EXCLUDED.{c}"

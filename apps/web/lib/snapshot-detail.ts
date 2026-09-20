@@ -38,6 +38,8 @@ export interface FindingView {
     urgency: string | null;
     risk: string | null;
   } | null;
+  /** What our own rules decided before the model was consulted. */
+  ruleCategory: DecisionCategory | null;
   modelStatus: string;
   policyStatus: string;
   policyReasons: string[];
@@ -154,6 +156,7 @@ export async function getSnapshotDetail(tenantId: string, runId: string): Promis
               risk: f.jevRisk,
             }
           : null,
+        ruleCategory: (f.ruleCategory as DecisionCategory | null) ?? null,
         modelStatus: f.modelStatus,
         policyStatus: f.policyStatus,
         policyReasons: (f.policyReasons as string[]) ?? [],

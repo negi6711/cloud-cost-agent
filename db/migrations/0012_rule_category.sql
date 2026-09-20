@@ -1,0 +1,1 @@
+ALTER TABLE "snapshot_finding" ADD COLUMN "rule_category" text;

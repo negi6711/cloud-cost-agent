@@ -85,6 +85,13 @@
       "when": 1789889682709,
       "tag": "0011_retention_two_windows",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1789909206861,
+      "tag": "0012_rule_category",
+      "breakpoints": true
     }
   ]
 }
