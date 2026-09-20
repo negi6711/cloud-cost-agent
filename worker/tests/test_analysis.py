@@ -14,7 +14,7 @@ from cca.settings import REPO_ROOT
 from cca.snapshots.analyze import Analysis, analyze
 from cca.snapshots.explain import TemplateExplanationProvider
 from cca.snapshots.packet import canonical_json, packet_sha256
-from cca.snapshots.types import Category, FindingKind, Severity
+from cca.snapshots.types import Category, FindingKind, MissingEvidence, Severity
 
 FIXTURES = REPO_ROOT / "fixtures"
 TODAY = date(2026, 9, 18)
@@ -222,7 +222,9 @@ def test_explanations_never_suggest_destructive_actions(name: str) -> None:
 def test_explanation_numbers_are_the_computed_facts() -> None:
     f = fixture("valid_cost_explorer.csv").findings[0]
     assert "$1,840.00" in f.card.what_changed and "20.2%" in f.card.what_changed
-    assert f.card.next_action.startswith("Confirm which team owns this spend")
+    # This export has no tags, so the next step is to make the spend attributable at all, rather
+    # than to ask a team the file cannot name.
+    assert f.card.next_action.startswith("Tag this spend to a team")
     assert f.card.source == "template"
 
 
@@ -271,3 +273,22 @@ def test_a_partial_current_month_is_not_compared() -> None:
     assert a.abstained is True
     assert a.summary["comparison"] is None
     assert Decimal(a.summary["investigation_impact"]) == Decimal(0)
+
+
+def test_the_next_step_names_the_team_the_export_already_names() -> None:
+    """When tags put a movement with one team, telling the reader to "confirm which team owns this
+    spend" wastes the only sentence the card has."""
+    a = fixture("cur_camelcase.csv")
+    ec2 = next(f for f in a.findings if f.candidate.label == "Amazon EC2")
+    assert "Platform" in ec2.card.next_action
+    assert "which team owns" not in ec2.card.next_action
+    # And the card no longer asks for the owner, because the file supplies it.
+    assert MissingEvidence.OWNER_CONFIRMATION not in ec2.card.missing
+    assert ec2.card.missing == (MissingEvidence.UTILIZATION_METRICS, MissingEvidence.CHANGE_CONTEXT)
+
+
+def test_an_export_without_tags_is_asked_for_allocation_not_utilization_first() -> None:
+    a = fixture("valid_cost_explorer.csv")  # grouped by service only: no tags, no usage types
+    for f in a.findings:
+        assert MissingEvidence.ALLOCATION_TAGS in f.card.missing
+        assert MissingEvidence.UTILIZATION_METRICS not in f.card.missing

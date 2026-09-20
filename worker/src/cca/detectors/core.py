@@ -31,6 +31,9 @@ MAX_REFS = 20
 # A component has to explain a real part of the movement to be worth a line in the card.
 COMPONENT_MIN_SHARE = Decimal("0.15")
 MAX_COMPONENTS = 3
+# A tag that covers this much of a movement answers "who owns it" on its own.
+OWNER_KNOWN_SHARE = Decimal("0.9")
+MAX_MISSING_EVIDENCE = 3
 _CENT = Decimal("0.01")
 _PCT = Decimal("0.0001")
 
@@ -155,7 +158,8 @@ def detect(view: MonthlyView, file_sha256: str, records: Sequence[CostRecord] = 
         # A grouping with a single value across the whole export (one account, one region) cannot
         # narrow anything down: "100% of it is in the only account you have" is not a fact.
         informative = {d for d in view.dimensions if d != view.primary_dimension and len(view.keys(d)) > 1}
-        kept = _with_components(kept, records, comparison, view.primary_dimension, informative)
+        kept = _with_components(kept, records, comparison, view.primary_dimension, informative,
+                                set(view.dimensions))
     notes = [] if comparison else ["no_comparison"]
     return Detection(t, comparison, kept, top, largest, unallocated_share, unallocated_amount, notes)
 
@@ -166,6 +170,7 @@ def _with_components(
     comparison: tuple[date, date],
     primary: str,
     informative: set[str],
+    available: set[str],
 ) -> list[Candidate]:
     """Describe each movement through the export's other groupings, from the same rows.
 
@@ -205,8 +210,52 @@ def _with_components(
             if dimension not in best or delta > best[dimension].delta:
                 best[dimension] = Component(dimension, label, delta, share)
         components = sorted(best.values(), key=lambda c: -c.delta)[:MAX_COMPONENTS]
-        out.append(replace(candidate, components=tuple(components)))
+        out.append(replace(
+            candidate,
+            components=tuple(components),
+            missing_evidence=_missing_for(candidate.kind, tuple(components), available),
+        ))
     return out
+
+
+#: A grouping that names a team. An account number does not: it is where the spend sits, not who
+#: decided to spend it.
+_NAMES_AN_OWNER = ("tag", "cost_category")
+#: Groupings fine enough to point at the capacity behind a movement.
+_SHOWS_CAPACITY = ("usage_type", "instance_type")
+
+
+def _missing_for(
+    kind: FindingKind,
+    components: tuple[Component, ...],
+    available: set[str],
+) -> tuple[MissingEvidence, ...]:
+    """What this finding is actually short of, given what the export turned out to contain.
+
+    The same three items on every card ("utilization, owner, change context") told a reader nothing
+    about which finding needed what. An export with team tags does not need to be asked who owns
+    something it already says; an export with no usage-type breakdown cannot be asked about
+    utilization, because what is missing first is finer-grained billing.
+    """
+    if kind is FindingKind.UNALLOCATED:
+        return (MissingEvidence.ALLOCATION_TAGS, MissingEvidence.OWNER_CONFIRMATION)
+
+    missing: list[MissingEvidence] = []
+    owner = next((c for c in components if c.dimension in _NAMES_AN_OWNER), None)
+    if not any(d in available for d in _NAMES_AN_OWNER):
+        missing.append(MissingEvidence.ALLOCATION_TAGS)  # nobody can be asked: the export has no tags
+    elif owner is None or owner.share < OWNER_KNOWN_SHARE:
+        missing.append(MissingEvidence.OWNER_CONFIRMATION)  # tagged, but this movement spans teams
+
+    if kind is FindingKind.NEW_SERVICE:
+        missing.append(MissingEvidence.ENVIRONMENT_CLASSIFICATION)
+    elif any(d in available for d in _SHOWS_CAPACITY):
+        missing.append(MissingEvidence.UTILIZATION_METRICS)
+    else:
+        missing.append(MissingEvidence.FINER_GRAINED_BILLING)
+
+    missing.append(MissingEvidence.CHANGE_CONTEXT)
+    return tuple(missing[:MAX_MISSING_EVIDENCE])
 
 
 def _rank_key(c: Candidate) -> tuple[int, Decimal, str]:

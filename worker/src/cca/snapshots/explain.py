@@ -11,6 +11,7 @@ from datetime import date
 from decimal import ROUND_HALF_UP, Decimal
 from typing import Protocol
 
+from cca.detectors.core import OWNER_KNOWN_SHARE
 from cca.snapshots.types import (
     MISSING_EVIDENCE_LABELS,
     Candidate,
@@ -103,19 +104,46 @@ def _refs_text(refs: tuple[str, ...]) -> str:
     return f"{shown} and {len(refs) - 4} more" if len(refs) > 4 else shown
 
 
-def next_action(category: Category, missing: tuple[MissingEvidence, ...], month: date) -> str:
-    """Safest next step for the decided category. Never a resize, delete, stop or purchase."""
+def next_action(
+    category: Category,
+    missing: tuple[MissingEvidence, ...],
+    month: date,
+    owner: str | None = None,
+) -> str:
+    """Safest next step for the decided category. Never a resize, delete, stop or purchase.
+
+    `owner` is a team the export itself names for nearly all of this movement. Telling someone to
+    "confirm which team owns this spend" when their own tags already say so wastes the one sentence
+    the card has to be useful.
+    """
     to_collect = [MISSING_EVIDENCE_LABELS[m] for m in missing
                   if m not in (MissingEvidence.NONE, MissingEvidence.OWNER_CONFIRMATION)]
     collect = f" and collect {to_collect[0]}" if to_collect else ""
     if category is Category.REQUEST_EVIDENCE:
+        wanted = to_collect[0] if to_collect else "the detail behind it"
+        if owner:
+            return f"Your tags put this spend with {owner}: ask them for {wanted} before considering a cost change."
+        if MissingEvidence.ALLOCATION_TAGS in missing:
+            # "Confirm who owns it and collect allocation tags" asks for the same thing twice.
+            return ("Tag this spend to a team, or add a cost category, so it can be attributed "
+                    "before considering a cost change.")
         return f"Confirm which team owns this spend{collect} before considering a cost change."
     if category is Category.INVESTIGATE:
-        return f"Ask the owning team what changed in {month_name(month)}{collect} before deciding anything."
+        who = owner or "the owning team"
+        return f"Ask {who} what changed in {month_name(month)}{collect} before deciding anything."
     if category is Category.ESCALATE:
+        cause = f"Confirm the cause with {owner}" if owner else "Confirm the owner and the cause"
         return ("Raise this with engineering leadership: the change is large relative to the bill. "
-                "Confirm the owner and the cause before any cost change.")
+                f"{cause} before any cost change.")
     return "No action yet. Check again after the next complete month."
+
+
+def owner_from_tags(c: Candidate) -> str | None:
+    """The team the export itself puts behind nearly all of this movement, if it names one."""
+    for part in c.components:
+        if part.dimension in ("tag", "cost_category") and part.share >= OWNER_KNOWN_SHARE:
+            return part.label
+    return None
 
 
 class TemplateExplanationProvider:
@@ -167,6 +195,6 @@ class TemplateExplanationProvider:
             what_changed=what,
             what_we_know=tuple(know),
             missing=data.missing,
-            next_action=next_action(data.final_category, data.missing, c.current_month),
+            next_action=next_action(data.final_category, data.missing, c.current_month, owner_from_tags(c)),
             source=self.name,
         )

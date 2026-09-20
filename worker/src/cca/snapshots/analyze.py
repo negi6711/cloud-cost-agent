@@ -14,7 +14,7 @@ from dataclasses import dataclass
 from decimal import Decimal
 from typing import Any
 
-from cca.detectors.core import Detection, detect
+from cca.detectors.core import MAX_MISSING_EVIDENCE, Detection, detect
 from cca.normalization.monthly import MonthlyView, build_monthly_view
 from cca.parsers.model import ParseResult
 from cca.policy.gate import Decision, decide
@@ -137,12 +137,22 @@ def analyze(
 
 
 def _missing_order(candidate: Candidate, outcome: ClassificationOutcome) -> tuple[MissingEvidence, ...]:
-    """The model's most-important missing evidence first (if any), then the rule-based list."""
+    """The rule-based list, plus any gap the model names that we had not listed.
+
+    The model's answer used to go first. Measured over the Day 7 corpus, it answered
+    "change_context" for 28 of 29 increases, so putting it first ordered every card the same way and
+    made the next action redundant: "ask what changed ... and collect the change behind it". A
+    constant is not a ranking. The answer is still recorded on every finding, so a future model
+    version that does discriminate will show up in the data — and when it names a gap our rules
+    missed, that still earns a line here.
+    """
     items = list(candidate.missing_evidence)
     c = outcome.classification
-    if c is not None and c.primary_missing is not MissingEvidence.NONE:
-        items = [c.primary_missing, *[m for m in items if m is not c.primary_missing]]
-    return tuple(items)
+    if c is not None and c.primary_missing not in (MissingEvidence.NONE, *items):
+        if len(items) >= MAX_MISSING_EVIDENCE and MissingEvidence.CHANGE_CONTEXT in items:
+            items.remove(MissingEvidence.CHANGE_CONTEXT)  # the most generic one makes way
+        items.append(c.primary_missing)
+    return tuple(items[:MAX_MISSING_EVIDENCE])
 
 
 def _money(d: Decimal | None) -> str | None:

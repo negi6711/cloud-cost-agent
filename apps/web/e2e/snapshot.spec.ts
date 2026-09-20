@@ -31,7 +31,9 @@ test("a consented snapshot shows facts, labelled classification, and decision ca
   await expect(ecs).toContainText("first appeared in July 2026 at $1,840.00");
   await expect(ecs).toContainText("Calculated from your file");
   await expect(ecs).toContainText("Model-assisted · Test classifier (not a real model): suggested Request evidence (90% confidence)");
-  await expect(ecs).toContainText("Confirm which team owns this spend");
+  // This export has no tags, so the card asks for the allocation rather than for a team it cannot name.
+  await expect(ecs).toContainText("Tag this spend to a team, or add a cost category");
+  await expect(ecs).toContainText("team or cost-allocation tags");
 
   // Never a destructive recommendation from billing-only data (checked on the decision cards only;
   // the page's own "delete my data" control is not a recommendation).

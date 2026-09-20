@@ -75,7 +75,10 @@ def test_valid_export_is_parsed_and_recorded(seed, owner, app_conn, storage_dir,
     assert ecs["observed_value"] == Decimal("1840.00")
     assert ecs["title"] == "New service: Amazon Elastic Container Service"
     assert {"text": "Billing data shows $1,840.00 in July 2026.", "refs": ["L5:C7"]} in ecs["evidence"]
-    assert ecs["missing_evidence"][0]["code"] == "owner_confirmation"
+    # A Cost Explorer export grouped by service carries no tags, so nobody can be asked who owns
+    # this: what is missing first is the allocation itself.
+    assert [m["code"] for m in ecs["missing_evidence"]] == [
+        "allocation_tags", "environment_classification", "change_context"]
 
     packets = owner.execute(
         "SELECT evidence_id, version, sha256, packet FROM evidence_packet WHERE snapshot_run_id = %s", (s.run_id,)

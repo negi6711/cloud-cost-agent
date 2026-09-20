@@ -79,6 +79,16 @@ the categories it publishes do not change. What changed is what the report print
 On the Day 7 corpus this takes the per-card notice from 58 of 58 findings to roughly 17 — the two
 materiality disagreements and the fifteen findings where the model was barely better than guessing.
 
+## A second constant answer
+
+The same measurement showed `primary_missing_evidence` is constant too: `change_context` for 28 of
+the 29 increases, `finer_grained_billing` for the one unallocated finding. Because that answer was
+put first in the card's missing-evidence list, every card was ordered the same way and every next
+action read "ask what changed ... and collect the change behind it", which asks for the same thing
+twice. The rules now decide the order from what the export contains, and the model's answer is
+appended only when it names a gap the rules missed. It is still recorded on every finding, so a
+version that starts discriminating will be visible in the data.
+
 ## Consequences
 
 * One extra text column per finding, and one more thing the unlock phase must write.

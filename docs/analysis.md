@@ -26,6 +26,28 @@ user.
 | Findings | at most 10, all from the grouping the export is built around (its primary dimension) |
 | Components | up to 3 per finding, one per other grouping, each explaining ≥ 15% of the movement |
 
+### What each finding is short of
+
+The missing-evidence list is computed per finding from what the export turned out to contain, not
+fixed per finding kind:
+
+| The export … | so the card asks for |
+|---|---|
+| has no team tag or cost category | allocation tags — nobody can be asked who owns this yet |
+| has tags, and one team covers ≥ 90% of the movement | nothing about ownership; the file already names them |
+| has tags, and the movement spans teams | owner confirmation |
+| has a usage-type or instance-type breakdown | CloudWatch utilization for the affected resources |
+| has neither | resource-level billing (a Cost and Usage Report) |
+
+Change context is always last, because "ask the owning team what changed" already says it. At most
+three items. The model's `primary_missing_evidence` answer is appended only when it names a gap the
+rules did not; it is never put first, because measured over the Day 7 corpus it answered
+`change_context` for 28 of 29 increases, and a constant is not a ranking (ADR 0003).
+
+When one team covers nearly all of a movement, the next action names them: "Ask ML Platform what
+changed in June 2026 and collect CloudWatch utilization for the affected resources before deciding
+anything."
+
 ### One movement, one finding
 
 Every row has exactly one value in the primary grouping, so movements in it partition the bill and
