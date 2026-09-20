@@ -175,8 +175,14 @@ def _summary(view: MonthlyView, result: ParseResult, detection: Detection, ready
         gaps.append({"code": "no_comparison",
                      "message": "At least two consecutive complete months are needed to compare periods."})
 
+    # The teaser headline: how much month-over-month increase the material findings account for.
+    # This is money that MOVED, not money anyone can recover; the copy must never call it savings.
+    investigation_impact = sum(
+        (c.delta for c in detection.candidates if c.material and c.delta > 0), Decimal(0)
+    )
     return {
         "version": 1,
+        "investigation_impact": _money(investigation_impact),
         "period": {"start": result.period_start.isoformat() if result.period_start else None,
                    "end": result.period_end.isoformat() if result.period_end else None},
         "granularity": str(result.granularity),

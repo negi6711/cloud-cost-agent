@@ -141,8 +141,9 @@ async function runOwner(tx: Parameters<Parameters<typeof withAdmin>[0]>[0], runI
     .innerJoin(lead, and(eq(lead.tenantId, sourceFile.tenantId), eq(lead.id, sourceFile.leadId)))
     .where(eq(snapshotRun.id, runId))
     .limit(1);
-  if (!row) throw new UserFacingError(404, "Snapshot not found.", "not_found");
-  return row;
+  // The join to lead is inner, so an un-unlocked (still anonymous) run simply has no owner here.
+  if (!row?.leadId) throw new UserFacingError(404, "Snapshot not found.", "not_found");
+  return { ...row, leadId: row.leadId };
 }
 
 export async function addSnapshotNote(runId: string, body: string, adminEmail: string): Promise<string> {

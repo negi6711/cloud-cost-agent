@@ -1,29 +1,39 @@
-import { leadInputSchema } from "@cca/domain";
+import { unlockSchema } from "@cca/domain";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 
-import { serverEnv } from "@/lib/env";
 import { errorResponse, newRequestId, readJsonBody } from "@/lib/http";
-import { encodeLeadSession, LEAD_SESSION_COOKIE, LEAD_SESSION_TTL_SECONDS } from "@/lib/lead-session";
-import { createLead } from "@/lib/leads";
 import { log } from "@/lib/log";
+import { visitorSessionFrom } from "@/lib/request-session";
 import { guardRequest } from "@/lib/route";
+import { unlockReport } from "@/lib/unlock";
+import { UserFacingError } from "@/lib/errors";
 
 const MAX_BODY_BYTES = 16 * 1024;
 
+/**
+ * The email gate. The visitor has already seen the deterministic teaser for their own upload; this
+ * records who they are and what they consented to, then starts the classification phase and emails
+ * a one-time link to the report.
+ */
 export async function POST(request: Request): Promise<NextResponse> {
   const requestId = newRequestId();
   const guard = guardRequest(request, "lead", requestId);
   if (guard) return guard;
+
+  const session = visitorSessionFrom(request);
+  if (!session) {
+    return errorResponse(401, requestId, "This upload session has expired. Please upload your file again.");
+  }
 
   const body = await readJsonBody(request, MAX_BODY_BYTES);
   if (body === undefined) {
     return errorResponse(400, requestId, "The form could not be read. Please try again.");
   }
 
-  const parsed = leadInputSchema.safeParse(body);
+  const parsed = unlockSchema.safeParse(body);
   if (!parsed.success) {
-    const { fieldErrors } = z.flattenError(parsed.error);
+    const { fieldErrors } = z.flattenError(parsed.error as z.ZodError<Record<string, unknown>>);
     // The honeypot gets the same generic answer as any other invalid form.
     if (fieldErrors.faxNumber) {
       log.warn("lead.honeypot", { requestId });
@@ -36,23 +46,22 @@ export async function POST(request: Request): Promise<NextResponse> {
   }
 
   try {
-    const { leadId, tenantId } = await createLead(parsed.data);
-    log.info("lead.created", { requestId, leadId, spendBand: parsed.data.spendBand });
-
-    const response = NextResponse.json(
-      { leadId },
+    const result = await unlockReport(session.tenantId, parsed.data, requestId);
+    return NextResponse.json(
+      {
+        snapshotRunId: result.snapshotRunId,
+        classificationQueued: result.classificationQueued,
+        // The report itself is behind the emailed link: the address has to be proven first.
+        message: "Check your email for a one-time link to your report.",
+      },
       { status: 201, headers: { "x-request-id": requestId } },
     );
-    response.cookies.set(LEAD_SESSION_COOKIE, encodeLeadSession({ leadId, tenantId }), {
-      httpOnly: true,
-      sameSite: "lax",
-      secure: serverEnv().NODE_ENV === "production",
-      path: "/",
-      maxAge: LEAD_SESSION_TTL_SECONDS,
-    });
-    return response;
   } catch (error) {
-    log.error("lead.create_failed", { requestId, error });
+    if (error instanceof UserFacingError) {
+      log.info("lead.unlock_refused", { requestId, code: error.code });
+      return errorResponse(error.status, requestId, error.message);
+    }
+    log.error("lead.unlock_failed", { requestId, error });
     return errorResponse(500, requestId);
   }
 }

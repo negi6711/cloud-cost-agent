@@ -25,7 +25,7 @@ consent), applies a deterministic policy gate, and renders a snapshot.
 ## Layout
 
 ```
-apps/web/        Next.js (App Router, TypeScript, Tailwind) — landing, form, upload, snapshot, admin
+apps/web/        Next.js (App Router, TypeScript, Tailwind) — landing, upload + teaser, email gate, report, admin
 packages/domain  Zod schemas shared by the web app
 packages/config  Shared constants
 worker/          Python 3.12 worker — parsing, analysis, evidence packets, Jev, policy gate

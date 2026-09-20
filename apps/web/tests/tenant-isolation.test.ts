@@ -1,22 +1,33 @@
 import { lead } from "@cca/db";
+import { CONTACT_BASIS } from "@cca/domain";
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
 
 import { closeDb, withAdmin, withTenant } from "@/lib/db";
-import { createLead } from "@/lib/leads";
+import { createVisitorWorkspace } from "@/lib/visitor-session";
 
-import { validLead } from "./support/fixtures";
 import { resetTenants, withOwner } from "./support/owner-db";
 
 beforeEach(resetTenants);
 afterAll(closeDb);
 
+/** Two workspaces, each with its own lead, as the email gate would leave them. */
 async function twoLeads() {
-  const { leadInputSchema } = await import("@cca/domain");
-  const a = await createLead(leadInputSchema.parse({ ...validLead, companyName: "Acme" }));
-  const b = await createLead(
-    leadInputSchema.parse({ ...validLead, email: "sam@globex.com", companyName: "Globex", companyWebsite: "globex.com" }),
-  );
-  return { a, b };
+  const make = async (email: string, company: string) => {
+    const tenantId = await createVisitorWorkspace();
+    const [row] = await withTenant(tenantId, (tx) =>
+      tx
+        .insert(lead)
+        .values({
+          tenantId, email, firstName: "Alex", companyName: company,
+          companyWebsite: "", companyDomain: email.split("@")[1]!, role: "Other",
+          country: "OTHER", provider: "AWS", spendBand: "not_sure", biggestProblem: "",
+          contactPermission: true, consentOrContactBasis: CONTACT_BASIS,
+        })
+        .returning({ id: lead.id }),
+    );
+    return { tenantId, leadId: row!.id };
+  };
+  return { a: await make("alex@acme.io", "Acme"), b: await make("sam@globex.com", "Globex") };
 }
 
 describe("tenant isolation (row-level security)", () => {

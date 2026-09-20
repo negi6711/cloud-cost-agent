@@ -94,18 +94,25 @@ def record_analysis(
     model_provider: str | None = None,
     model_identifier: str | None = None,
 ) -> None:
-    """Call inside a tenant transaction. Idempotent per (run, evidence_id)."""
+    """Call inside a tenant transaction. Idempotent per (run, evidence_id): the deterministic teaser
+    phase inserts, and the unlock phase updates the same rows with the classification."""
     record_calls(conn, tenant_id, run_id, analysis)
     placeholders = ", ".join(["%s"] * 29)
     for f in analysis.findings:
+        updates = ", ".join(
+            f"{c} = EXCLUDED.{c}"
+            for c in _FINDING_COLUMNS.split(", ")
+            if c not in ("tenant_id", "snapshot_run_id", "evidence_id")
+        )
         conn.execute(
             f"INSERT INTO snapshot_finding ({_FINDING_COLUMNS}) VALUES ({placeholders}) "  # noqa: S608 - fixed columns
-            "ON CONFLICT (tenant_id, snapshot_run_id, evidence_id) DO NOTHING",
+            f"ON CONFLICT (tenant_id, snapshot_run_id, evidence_id) DO UPDATE SET {updates}",
             _finding_values(tenant_id, run_id, f),
         )
         conn.execute(
             "INSERT INTO evidence_packet (tenant_id, snapshot_run_id, evidence_id, version, sha256, packet) "
-            "VALUES (%s, %s, %s, %s, %s, %s) ON CONFLICT (tenant_id, snapshot_run_id, evidence_id) DO NOTHING",
+            "VALUES (%s, %s, %s, %s, %s, %s) ON CONFLICT (tenant_id, snapshot_run_id, evidence_id) "
+            "DO UPDATE SET version = EXCLUDED.version, sha256 = EXCLUDED.sha256, packet = EXCLUDED.packet",
             (tenant_id, run_id, f.candidate.evidence_id, PACKET_VERSION, f.packet_sha256, Jsonb(f.packet)),
         )
 

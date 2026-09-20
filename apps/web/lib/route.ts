@@ -5,25 +5,24 @@ import { z } from "zod";
 
 import { UserFacingError } from "./errors";
 import { errorResponse, newRequestId, readJsonBody } from "./http";
-import type { LeadSession } from "./lead-session";
 import { log } from "./log";
 import { isSameOrigin } from "./origin";
 import { checkLimit, clientKey, type LimitName } from "./rate-limit";
-import { leadSessionFrom } from "./request-session";
+import { type UploadSession, visitorSessionFrom } from "./request-session";
 
 interface JsonRouteContext<T> {
   request: Request;
   requestId: string;
   body: T;
-  session: LeadSession;
+  session: UploadSession;
 }
 
 /**
- * Standard handling for JSON POST routes that act for the lead who just filled the form:
- * lead-session check, size-capped body, Zod validation, UserFacingError → its status and message,
- * anything else → generic 500 with details only in the logs.
+ * Standard handling for JSON POST routes that act inside the visitor's own workspace: visitor-cookie
+ * check, size-capped body, Zod validation, UserFacingError → its status and message, anything else →
+ * a generic 500 with details only in the logs.
  */
-export function leadJsonRoute<S extends z.ZodType>(
+export function visitorJsonRoute<S extends z.ZodType>(
   name: string,
   schema: S,
   handler: (ctx: JsonRouteContext<z.infer<S>>) => Promise<{ status: number; body: unknown }>,
@@ -34,9 +33,9 @@ export function leadJsonRoute<S extends z.ZodType>(
     const requestId = newRequestId();
     const guard = guardRequest(request, options.limit, requestId);
     if (guard) return guard;
-    const session = leadSessionFrom(request);
+    const session = visitorSessionFrom(request);
     if (!session) {
-      return errorResponse(401, requestId, "Your session has expired. Please fill in the form again.");
+      return errorResponse(401, requestId, "This upload session has expired. Please upload your file again.");
     }
     const raw = await readJsonBody(request, maxBytes);
     if (raw === undefined) return errorResponse(400, requestId, "The request could not be read.");

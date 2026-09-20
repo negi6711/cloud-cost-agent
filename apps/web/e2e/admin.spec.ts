@@ -1,14 +1,9 @@
 import { expect, type Page, test } from "@playwright/test";
 
+import { newestLink, uploadAndOpenReport } from "./support";
+
 const ADMIN = "founder@admin.test"; // ADMIN_EMAILS in playwright.config.ts
 const CSV = "Service,Amazon EC2($),Amazon ECS($)\nService total,2100,900\n2026-07-01,1000,0\n2026-08-01,1100,900\n";
-
-async function newestLink(page: Page, email: string): Promise<string> {
-  await page.goto("/dev/inbox");
-  const message = page.getByRole("listitem").filter({ has: page.getByTestId("inbox-to").getByText(email, { exact: true }) });
-  await expect(message.first()).toBeVisible();
-  return (await message.first().getByRole("link").getAttribute("href"))!;
-}
 
 async function signIn(page: Page, email: string, next: string): Promise<void> {
   await page.goto(`/login?next=${encodeURIComponent(next)}`);
@@ -18,22 +13,20 @@ async function signIn(page: Page, email: string, next: string): Promise<void> {
   await page.goto(await newestLink(page, email));
 }
 
+/** A prospect uploads anonymously, unlocks with their email, and opens the report. */
 async function prospectUploads(page: Page, email: string, company: string): Promise<void> {
-  await page.goto("/#get-snapshot");
-  await page.getByLabel("Work email").fill(email);
-  await page.getByLabel("First name").fill("Sam");
-  await page.getByLabel("Company name").fill(company);
-  await page.getByLabel("Company website").fill("example-co.com");
-  await page.getByLabel("Role").selectOption("VP Engineering");
-  await page.getByLabel("Country").selectOption("DE");
-  await page.getByLabel("Primary cloud provider").selectOption("AWS");
-  await page.getByLabel("Estimated monthly cloud spend").selectOption("10k_25k");
-  await page.getByLabel("Biggest current cloud-cost problem").fill("Containers appeared.");
-  await page.getByLabel("You may contact me about my snapshot and a possible pilot.").check();
-  await page.getByRole("button", { name: "Continue to upload" }).click();
-  await page.getByLabel("AWS billing export").setInputFiles({ name: "ce.csv", mimeType: "text/csv", buffer: Buffer.from(CSV) });
-  await page.getByRole("button", { name: "Upload and analyze" }).click();
-  await expect(page.getByRole("heading", { name: "Snapshot ready" })).toBeVisible({ timeout: 20_000 });
+  await uploadAndOpenReport(page, email, { csv: `${CSV}# ${email}
+`, filename: "ce.csv", company });
+}
+
+/** Answer the optional questions shown under the report after unlock. */
+async function answerProfile(page: Page, problem: string): Promise<void> {
+  await page.getByLabel("Where are you based?").selectOption("DE");
+  await page.getByLabel("Primary cloud").selectOption("AWS");
+  await page.getByLabel("Monthly cloud spend").selectOption("10k_25k");
+  await page.getByLabel("What is your biggest cloud cost problem right now?").fill(problem);
+  await page.getByRole("button", { name: "Send answers" }).click();
+  await expect(page.getByText(/that helps us make the next snapshot more useful/)).toBeVisible();
 }
 
 test("the founder can work a lead: status, note, links, and deletion", async ({ browser }, info) => {
@@ -41,6 +34,7 @@ test("the founder can work a lead: status, note, links, and deletion", async ({ 
   const email = `queue+${info.project.name}@example-co.com`;
   const company = `Queue Co ${info.project.name}`;
   await prospectUploads(prospect, email, company);
+  await answerProfile(prospect, "Containers appeared.");
 
   const admin = await (await browser.newContext()).newPage();
   await signIn(admin, ADMIN, "/admin");
@@ -75,7 +69,6 @@ test("the founder can work a lead: status, note, links, and deletion", async ({ 
 test("a signed-in prospect cannot see or call the admin area", async ({ page, request }, info) => {
   const email = `nosy+${info.project.name}@example-co.com`;
   await prospectUploads(page, email, `Nosy Co ${info.project.name}`);
-  await page.goto(await newestLink(page, email));
   await expect(page.getByText(`Signed in as ${email}`)).toBeVisible();
 
   const res = await page.goto("/admin");
@@ -93,7 +86,6 @@ test("a signed-in prospect cannot see or call the admin area", async ({ page, re
 test("a prospect can delete their own snapshot", async ({ page }, info) => {
   const email = `delete+${info.project.name}@example-co.com`;
   await prospectUploads(page, email, `Delete Co ${info.project.name}`);
-  await page.goto(await newestLink(page, email));
   const snapshotUrl = page.url();
   await page.getByRole("button", { name: "Delete file and snapshot" }).click();
   await expect(page.getByText(/cannot be undone/)).toBeVisible();

@@ -1,10 +1,15 @@
-/** A complete, valid qualification form submission. */
-export const validLead = {
+/** A complete, valid submission of the email gate shown under the teaser. */
+export const validUnlock = {
   email: "  Alex@Acme.io ",
   firstName: "Alex",
   companyName: "Acme",
-  companyWebsite: "https://www.acme.io/about",
   role: "Head of Platform",
+  processingConsent: true,
+  typesafeConsent: true,
+} as const;
+
+/** The optional qualification answers, asked after unlock. */
+export const validProfile = {
   country: "GB",
   provider: "AWS",
   spendBand: "25k_75k",

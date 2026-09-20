@@ -49,6 +49,8 @@ class Settings(BaseSettings):
     jev_noul_margin_threshold: float = Field(0.3, alias="JEV_NOUL_MARGIN_THRESHOLD", ge=0, le=1)
 
     raw_file_retention_days: int = Field(30, alias="RAW_FILE_RETENTION_DAYS", ge=1, le=365)
+    # Uploads never unlocked with an email: we cannot contact that person, so hold the file briefly.
+    anonymous_file_retention_days: int = Field(7, alias="ANONYMOUS_FILE_RETENTION_DAYS", ge=1, le=90)
     retention_interval_seconds: int = Field(3600, alias="RETENTION_INTERVAL_SECONDS", ge=60)
 
     worker_id: str = Field("worker-local", alias="WORKER_ID")

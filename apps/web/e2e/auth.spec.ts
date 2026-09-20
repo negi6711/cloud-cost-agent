@@ -1,5 +1,7 @@
 import { expect, type Page, test } from "@playwright/test";
 
+import { newestLink, unlockReport, uploadAnonymously } from "./support";
+
 const CSV = [
   "Service,Amazon Elastic Compute Cloud - Compute($),Total costs($)",
   "Service total,3300,3300",
@@ -9,50 +11,18 @@ const CSV = [
   "",
 ].join("\n");
 
-/** Fill the form and upload a CSV (unique bytes per email). */
-async function uploadAs(page: Page, email: string): Promise<void> {
-  await page.goto("/#get-snapshot");
-  await page.getByLabel("Work email").fill(email);
-  await page.getByLabel("First name").fill("Pat");
-  await page.getByLabel("Company name").fill("Example Co");
-  await page.getByLabel("Company website").fill("example-co.com");
-  await page.getByLabel("Role").selectOption("CTO");
-  await page.getByLabel("Country").selectOption("US");
-  await page.getByLabel("Primary cloud provider").selectOption("AWS");
-  await page.getByLabel("Estimated monthly cloud spend").selectOption("10k_25k");
-  await page.getByLabel("Biggest current cloud-cost problem").fill("Bill doubled.");
-  await page.getByLabel("You may contact me about my snapshot and a possible pilot.").check();
-  await page.getByRole("button", { name: "Continue to upload" }).click();
-  await page.getByLabel("AWS billing export").setInputFiles({
-    name: "costexplorer.csv",
-    mimeType: "text/csv",
-    buffer: Buffer.from(`${CSV}# ${email}\n`), // unique bytes per test, so dedupe never merges runs
-  });
-  await page.getByRole("button", { name: "Upload and analyze" }).click();
-  await expect(page.getByText("File accepted")).toBeVisible();
+/** Upload anonymously, then unlock with this email (unique bytes per email). */
+async function uploadAndUnlock(page: Page, email: string): Promise<void> {
+  await uploadAnonymously(page, { csv: `${CSV}# ${email}\n` });
+  await unlockReport(page, email);
 }
 
-/** The sign-in link from the newest dev-inbox email to `email`. */
-async function emailedLink(page: Page, email: string): Promise<string> {
-  await page.goto("/dev/inbox");
-  const message = page.getByRole("listitem").filter({ has: page.getByTestId("inbox-to").getByText(email, { exact: true }) });
-  await expect(message.first()).toBeVisible();
-  const href = await message.first().getByRole("link").getAttribute("href");
-  if (!href) throw new Error("no link in email");
-  return href;
-}
-
-async function followEmailedLink(page: Page, email: string): Promise<string> {
-  const link = await emailedLink(page, email);
-  await page.goto(link);
-  return link;
-}
-
-test("results require login; the emailed link signs the lead in and works only once", async ({ page, browser }, info) => {
+test("the report requires the emailed link, which signs the lead in and works only once", async ({ page, browser }, info) => {
   const email = `auth+${info.project.name}@example-co.com`;
-  await uploadAs(page, email);
+  await uploadAndUnlock(page, email);
 
-  const link = await followEmailedLink(page, email);
+  const link = await newestLink(page, email);
+  await page.goto(link);
   await expect(page).toHaveURL(/\/snapshot\/[0-9a-f-]{36}$/);
   await expect(page.getByText(`Signed in as ${email}`)).toBeVisible();
   await expect(page.getByRole("heading", { name: "Cloud Cost Decision Snapshot" })).toBeVisible();
@@ -70,19 +40,29 @@ test("an unauthenticated visitor is sent to login", async ({ page }) => {
   await expect(page.getByRole("heading", { name: "Sign in to view your snapshot" })).toBeVisible();
 });
 
+test("the visitor cookie alone never opens a report", async ({ page }, info) => {
+  const email = `cookie+${info.project.name}@example-co.com`;
+  await uploadAndUnlock(page, email);
+  // Same browser, same upload session, but the emailed link has not been opened.
+  const link = await newestLink(page, email);
+  const runId = new URL(link, "http://localhost").searchParams.get("callbackURL")!.split("/").pop();
+  await page.goto(`/snapshot/${runId}`);
+  await expect(page).toHaveURL(/\/login\?next=/);
+});
+
 test("a signed-in lead cannot open another lead's snapshot", async ({ browser }, info) => {
   const ownerEmail = `owner+${info.project.name}@example-co.com`;
   const otherEmail = `other+${info.project.name}@example-co.com`;
 
   const ownerPage = await (await browser.newContext()).newPage();
-  await uploadAs(ownerPage, ownerEmail);
-  await followEmailedLink(ownerPage, ownerEmail);
+  await uploadAndUnlock(ownerPage, ownerEmail);
+  await ownerPage.goto(await newestLink(ownerPage, ownerEmail));
   await expect(ownerPage).toHaveURL(/\/snapshot\/[0-9a-f-]{36}$/);
   const ownerSnapshotUrl = ownerPage.url();
 
   const otherPage = await (await browser.newContext()).newPage();
-  await uploadAs(otherPage, otherEmail);
-  await followEmailedLink(otherPage, otherEmail);
+  await uploadAndUnlock(otherPage, otherEmail);
+  await otherPage.goto(await newestLink(otherPage, otherEmail));
   await expect(otherPage.getByText(`Signed in as ${otherEmail}`)).toBeVisible();
 
   const res = await otherPage.goto(ownerSnapshotUrl);

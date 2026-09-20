@@ -43,7 +43,9 @@ known limitations.
 
 Consequences for MVP 0:
 
-1. A packet is sent to TypeSafe only if the prospect ticked the TypeSafe consent box.
+1. A packet is sent to TypeSafe only if the prospect ticked the TypeSafe consent box at the email
+   gate. Before that gate a run carries `consent_basis = 'pending'`, which makes every model provider
+   unavailable, so the free deterministic pass cannot call out (ADR 0002).
 2. User-facing copy must never claim that TypeSafe deletes submitted data.
 3. Deleting a snapshot removes our copies; copies already processed by TypeSafe are outside our
    control, and the disclosure says so.
@@ -52,7 +54,8 @@ Consequences for MVP 0:
 
 | Artifact | Default |
 |---|---|
-| Raw uploaded file | Deleted after 30 days (`RAW_FILE_RETENTION_DAYS`) or on request |
+| Raw uploaded file, claimed by a lead | Deleted after 30 days (`RAW_FILE_RETENTION_DAYS`) or on request |
+| Raw uploaded file, never claimed (no email given) | Deleted after 7 days (`ANONYMOUS_FILE_RETENTION_DAYS`) |
 | Derived facts, findings, evidence packets, model-call records | Kept until the prospect or founder deletes the source file |
 | Delete flow | Removes the object, runs, findings, evidence packets and model-call records; writes a content-free audit event |
 
@@ -67,7 +70,8 @@ Filled in as controls land; each links to its test.
   `apps/web/lib/sniff.ts`, `apps/web/tests/sniff.test.ts`; worker re-verifies SHA-256 before use
 - [x] Tenant isolation (chokepoint + RLS) with cross-tenant tests — `db/migrations/0001_*.sql`,
   `apps/web/tests/tenant-isolation.test.ts`
-- [x] Consent gate before external model processing — opt-in per upload, never pre-ticked; the worker
+- [x] Consent gate before external model processing — opt-in at the email gate, and the run is
+  `pending` until then; the worker
   checks consent before any provider is built, and replay refuses unconsented runs
   (`worker/tests/test_classification_pipeline.py`)
 - [x] No hidden model substitution — failures yield explicit unavailable states; the mock is labelled
@@ -80,8 +84,8 @@ Filled in as controls land; each links to its test.
 - [x] Delete flow for source and derived data — prospect or admin; rows first (cascade), then the
   object, with a `storage.delete` retry job on failure; content-free audit event
   (`apps/web/tests/hardening.test.ts`, `apps/web/e2e/admin.spec.ts`)
-- [x] Raw-file retention — worker sweeper deletes objects after 30 days, keeps derived data
-  (`worker/tests/test_retention_and_delete.py`)
+- [x] Raw-file retention — worker sweeper deletes objects after 30 days (7 for uploads nobody
+  claimed), keeps derived data (`worker/tests/test_retention_and_delete.py`)
 - [x] Rate limits and same-origin checks on every state-changing route (in-memory, single web
   instance; move to a shared store before scaling out)
 - [x] Admin area: 404 for signed-in non-admins, 401/403 on admin APIs, every admin action audited

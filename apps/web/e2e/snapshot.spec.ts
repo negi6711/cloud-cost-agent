@@ -3,42 +3,16 @@ import path from "node:path";
 
 import { expect, type Page, test } from "@playwright/test";
 
+import { uploadAndOpenReport } from "./support";
+
 const CANONICAL = readFileSync(path.resolve(__dirname, "../../../fixtures/valid_cost_explorer.csv"));
 
-async function uploadAndOpenSnapshot(page: Page, email: string, consent: boolean): Promise<void> {
-  await page.goto("/#get-snapshot");
-  await page.getByLabel("Work email").fill(email);
-  await page.getByLabel("First name").fill("Pat");
-  await page.getByLabel("Company name").fill("Example Co");
-  await page.getByLabel("Company website").fill("example-co.com");
-  await page.getByLabel("Role").selectOption("Head of Platform");
-  await page.getByLabel("Country").selectOption("GB");
-  await page.getByLabel("Primary cloud provider").selectOption("AWS");
-  await page.getByLabel("Estimated monthly cloud spend").selectOption("25k_75k");
-  await page.getByLabel("Biggest current cloud-cost problem").fill("ECS appeared on the bill.");
-  await page.getByLabel("You may contact me about my snapshot and a possible pilot.").check();
-  await page.getByRole("button", { name: "Continue to upload" }).click();
-
-  if (consent) await page.getByLabel(/Allow model-assisted classification/).check();
-  await page.getByLabel("AWS billing export").setInputFiles({
-    name: "costexplorer.csv",
-    mimeType: "text/csv",
-    buffer: CANONICAL,
-  });
-  await page.getByRole("button", { name: "Upload and analyze" }).click();
-  await expect(page.getByRole("heading", { name: "Snapshot ready" })).toBeVisible({ timeout: 20_000 });
-
-  await page.goto("/dev/inbox");
-  const message = page
-    .getByRole("listitem")
-    .filter({ has: page.getByTestId("inbox-to").getByText(email, { exact: true }) });
-  const href = await message.first().getByRole("link").getAttribute("href");
-  await page.goto(href!);
-  await expect(page.getByRole("heading", { name: "Cloud Cost Decision Snapshot" })).toBeVisible();
+async function openReport(page: Page, email: string, typesafeConsent: boolean): Promise<void> {
+  await uploadAndOpenReport(page, email, { csv: CANONICAL.toString("utf8"), typesafeConsent });
 }
 
 test("a consented snapshot shows facts, labelled classification, and decision cards", async ({ page }, info) => {
-  await uploadAndOpenSnapshot(page, `snap+${info.project.name}@example-co.com`, true);
+  await openReport(page, `snap+${info.project.name}@example-co.com`, true);
 
   // Deterministic facts from the file.
   await expect(page.getByText("Spend covered")).toBeVisible();
@@ -72,7 +46,7 @@ test("a consented snapshot shows facts, labelled classification, and decision ca
 });
 
 test("without consent the snapshot is rule-based and says so", async ({ page }, info) => {
-  await uploadAndOpenSnapshot(page, `noconsent+${info.project.name}@example-co.com`, false);
+  await openReport(page, `noconsent+${info.project.name}@example-co.com`, false);
   await expect(page.getByText(/You did not allow model-assisted classification/).first()).toBeVisible();
   const ecs = page.getByRole("article", { name: "New service: Amazon Elastic Container Service" });
   await expect(ecs).toContainText("Rule-based: no model classified this finding.");

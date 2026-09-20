@@ -17,6 +17,8 @@ from cca.providers.mock import MockJevProvider
 from cca.settings import Settings
 
 CONSENT_GRANTED = "typesafe:granted"
+# Set while the snapshot is still the free teaser: no model call may happen yet.
+CONSENT_PENDING = "pending"
 
 # (consent_basis, job attempt) -> provider
 ProviderFactory = Callable[[str | None, int], DecisionModelProvider]
@@ -24,6 +26,8 @@ ProviderFactory = Callable[[str | None, int], DecisionModelProvider]
 
 def provider_factory(settings: Settings) -> ProviderFactory:
     def factory(consent_basis: str | None, attempt: int) -> DecisionModelProvider:
+        if consent_basis == CONSENT_PENDING:
+            return UnavailableProvider(UnavailableReason.AWAITING_UNLOCK)
         if consent_basis != CONSENT_GRANTED:
             return UnavailableProvider(UnavailableReason.NO_CONSENT)
         if not settings.jev_enabled:

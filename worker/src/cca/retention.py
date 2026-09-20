@@ -26,8 +26,19 @@ class SweepResult:
     failed: int
 
 
-def sweep(conn: Connection, store: ObjectStore, retention_days: int, limit: int = BATCH) -> SweepResult:
-    due = conn.execute("SELECT * FROM raw_files_due_for_deletion(%s, %s)", (retention_days, limit)).fetchall()
+def sweep(
+    conn: Connection,
+    store: ObjectStore,
+    retention_days: int,
+    anonymous_retention_days: int = 7,
+    limit: int = BATCH,
+) -> SweepResult:
+    """Delete raw objects past their window: `anonymous_retention_days` for uploads nobody claimed
+    with an email, `retention_days` for unlocked ones."""
+    due = conn.execute(
+        "SELECT * FROM raw_files_due_for_deletion(%s, %s, %s)",
+        (retention_days, anonymous_retention_days, limit),
+    ).fetchall()
     deleted = failed = 0
     for row in due:
         tenant_id, file_id, key = str(row["tenant_id"]), row["id"], row["storage_key"]
@@ -46,7 +57,8 @@ def sweep(conn: Connection, store: ObjectStore, retention_days: int, limit: int 
             conn.execute(
                 "INSERT INTO audit_event (tenant_id, actor_type, action, object_type, object_id, metadata) "
                 "VALUES (%s, 'system', 'raw_file.deleted_by_retention', 'source_file', %s, %s)",
-                (tenant_id, str(file_id), Jsonb({"retention_days": retention_days})),
+                (tenant_id, str(file_id), Jsonb({"retention_days": retention_days if row["claimed"] else anonymous_retention_days,
+                                                 "claimed": row["claimed"]})),
             )
         deleted += 1
     if deleted or failed:

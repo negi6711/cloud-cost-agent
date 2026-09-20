@@ -77,7 +77,8 @@ class JobLoop:
                         if processed:
                             log.info("loop.drained", jobs=processed)
                         if time.monotonic() >= next_sweep:
-                            sweep(conn, store, self._settings.raw_file_retention_days)
+                            sweep(conn, store, self._settings.raw_file_retention_days,
+                                  self._settings.anonymous_file_retention_days)
                             next_sweep = time.monotonic() + self._settings.retention_interval_seconds
                         self._wake.wait(self._settings.poll_interval_seconds)
                         self._wake.clear()

@@ -90,6 +90,8 @@ export const lead = pgTable(
     desiredOutcome: text("desired_outcome"),
     pilotInterest: text("pilot_interest"),
     status: text("status").notNull().default("new"),
+    /** Set when the prospect follows their sign-in link, proving the address is theirs. */
+    emailVerifiedAt: timestamp("email_verified_at", { withTimezone: true }),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
   },
@@ -113,7 +115,8 @@ export const sourceFile = pgTable(
   {
     id: id(),
     tenantId: tenantId(),
-    leadId: uuid("lead_id").notNull(),
+    /** Null until the visitor unlocks the report with their email (uploads come first). */
+    leadId: uuid("lead_id"),
     storageKey: text("storage_key").notNull(),
     originalFilename: text("original_filename").notNull(),
     mimeType: text("mime_type").notNull(),
@@ -151,7 +154,8 @@ export const consent = pgTable(
   {
     id: id(),
     tenantId: tenantId(),
-    leadId: uuid("lead_id").notNull(),
+    /** Null for consent captured at upload time, before the lead exists. */
+    leadId: uuid("lead_id"),
     /** Consent is collected per upload; null only for consents not tied to a file. */
     sourceFileId: uuid("source_file_id"),
     provider: text("provider").notNull(),
@@ -235,6 +239,10 @@ export const snapshotRun = pgTable(
     explanationProvider: text("explanation_provider"),
     /** Aggregate facts for the snapshot page: monthly totals, top services, changes, data gaps. */
     summary: jsonb("summary"),
+    /** When the visitor exchanged their email for the full report (starts the classification phase). */
+    unlockedAt: timestamp("unlocked_at", { withTimezone: true }),
+    /** First time the signed-in owner opened the full report. */
+    viewedAt: timestamp("viewed_at", { withTimezone: true }),
     createdAt: createdAt(),
     completedAt: timestamp("completed_at", { withTimezone: true }),
   },

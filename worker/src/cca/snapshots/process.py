@@ -1,6 +1,15 @@
 """The `snapshot.process` job: load -> parse -> analyze (detect, readiness, evidence packets,
 model classification, policy gate, explanations) -> persist.
 
+Runs in two phases, because uploads happen before the email gate:
+
+* `teaser` (payload phase absent or "teaser"): deterministic only. The provider for a run whose
+  consent is still "pending" is always unavailable, so no model call and no spend can happen before
+  a visitor has given their email.
+* `full` (payload phase "full"): enqueued when the report is unlocked. The same file is parsed
+  again (deterministic, so the facts are identical) and classified according to the consent that was
+  recorded at the gate. Findings are updated in place.
+
 Parsed rows live only in memory for the duration of the job. What is persisted is aggregate:
 counts, totals, the detected period, and issues whose messages are ours, never file contents.
 """
@@ -22,7 +31,7 @@ from cca.jobs.queue import Job
 from cca.parsers import ParseError, ParseResult, parse_billing_export
 from cca.providers.base import DecisionModelProvider, UnavailableProvider, UnavailableReason
 from cca.providers.cache import CachingProvider, load_cached_answers
-from cca.providers.factory import CONSENT_GRANTED, ProviderFactory
+from cca.providers.factory import CONSENT_GRANTED, CONSENT_PENDING, ProviderFactory
 from cca.snapshots.analyze import analyze
 from cca.snapshots.explain import ExplanationProvider, TemplateExplanationProvider
 from cca.snapshots.persist import record_analysis, record_calls
@@ -60,6 +69,8 @@ def utc_today() -> date:
 
 def _no_model(consent_basis: str | None, attempt: int) -> DecisionModelProvider:
     """Default for tests and tools: classification disabled, consent still respected."""
+    if consent_basis == CONSENT_PENDING:
+        return UnavailableProvider(UnavailableReason.AWAITING_UNLOCK)
     if consent_basis != CONSENT_GRANTED:
         return UnavailableProvider(UnavailableReason.NO_CONSENT)
     return UnavailableProvider(UnavailableReason.DISABLED)
@@ -87,8 +98,8 @@ def make_handler(
 
 def _load_run(conn: Connection, run_id: UUID) -> dict[str, Any]:
     row = conn.execute(
-        "SELECT r.id, r.status, r.source_file_id, r.consent_basis, f.storage_key, f.sha256, f.size_bytes, "
-        "f.raw_deleted_at "
+        "SELECT r.id, r.status, r.source_file_id, r.consent_basis, r.unlocked_at, "
+        "f.storage_key, f.sha256, f.size_bytes, f.raw_deleted_at "
         "FROM snapshot_run r JOIN source_file f "
         "  ON f.tenant_id = r.tenant_id AND f.id = r.source_file_id "
         "WHERE r.id = %s",
@@ -131,9 +142,11 @@ def process_snapshot(
     noul_margin: float = 0.3,
 ) -> None:
     run_id = UUID(str(job.payload["snapshotRunId"]))
+    full_phase = str(job.payload.get("phase", "teaser")) == "full"
     with tenant_transaction(conn, job.tenant_id):
         run = _load_run(conn, run_id)
-        if run["status"] in _TERMINAL:
+        # A finished run is only re-processed to add classification after the report was unlocked.
+        if run["status"] in _TERMINAL and not (full_phase and run["unlocked_at"] is not None):
             log.info("snapshot.already_finished", run_id=str(run_id), status=run["status"])
             return
 
@@ -200,6 +213,7 @@ def process_snapshot(
     log.info(
         "snapshot.analyzed",
         run_id=str(run_id),
+        phase="full" if full_phase else "teaser",
         findings=len(analysis.findings),
         readiness=analysis.readiness.score,
         model_status=str(analysis.model_status) if analysis.model_status else None,

@@ -1,4 +1,4 @@
-import { QualificationForm } from "@/components/qualification-form";
+import Link from "next/link";
 import { SampleSnapshot } from "@/components/sample-snapshot";
 
 // Copy is taken from docs/product-spec.md §4. No logos, savings figures, or autonomy claims.
@@ -37,12 +37,12 @@ function Hero() {
           changed, why it changed, who owns it, what action is safest, and what evidence is missing.
         </p>
         <div className="mt-8 flex flex-col gap-3 sm:flex-row">
-          <a
-            href="#get-snapshot"
+          <Link
+            href="/upload"
             className="rounded-lg bg-accent px-5 py-3 text-center font-semibold text-accent-foreground hover:opacity-90"
           >
             Get my free Cloud Cost Decision Snapshot
-          </a>
+          </Link>
           <a
             href="#example"
             className="rounded-lg border border-border bg-white px-5 py-3 text-center font-semibold hover:bg-subtle"
@@ -192,7 +192,7 @@ function Faq() {
     ],
     [
       "Can I upload sensitive billing data?",
-      "Upload only data you are permitted to share; redacted files are supported. The raw file is kept for 30 days unless you delete it sooner. Model-assisted classification uses a minimized summary with account names and IDs removed, never the raw file, and only if you agree at upload.",
+      "Upload only data you are permitted to share; redacted files are supported. If you never ask for the full report, the file is deleted within 7 days; otherwise it is kept for 30 days unless you delete it sooner. Your headline figures are pure arithmetic on the file. Model-assisted classification happens only after you ask for the full report and agree to it, and uses a minimized summary with account names and IDs removed, never the raw file.",
     ],
   ] as const;
   return (
@@ -216,15 +216,18 @@ function GetSnapshot() {
   return (
     <section id="get-snapshot" className="scroll-mt-8 border-t border-border bg-subtle">
       <Container className="py-16">
-        <div className="mx-auto max-w-2xl">
+        <div className="mx-auto max-w-2xl text-center">
           <h2 className="text-2xl font-semibold">Get your free Cloud Cost Decision Snapshot</h2>
           <p className="mt-2 text-sm leading-6 text-muted">
-            Tell us a little about your team. You can upload an AWS billing export on the next step, or
-            ask for a manual review instead.
+            Upload an AWS Cost Explorer export and see your headline figures straight away. No account,
+            no email, no AWS credentials. We ask for your email only when you want the full report.
           </p>
-          <div className="mt-8 rounded-xl border border-border bg-white p-5 sm:p-8">
-            <QualificationForm />
-          </div>
+          <Link
+            href="/upload"
+            className="mt-8 inline-block rounded-lg bg-accent px-5 py-3 font-semibold text-accent-foreground hover:opacity-90"
+          >
+            Upload my billing export
+          </Link>
         </div>
       </Container>
     </section>

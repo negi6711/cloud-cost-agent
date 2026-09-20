@@ -21,6 +21,7 @@ class ModelStatus(StrEnum):
 
 
 class UnavailableReason(StrEnum):
+    AWAITING_UNLOCK = "awaiting_unlock"  # deterministic teaser phase, before the email gate
     DISABLED = "disabled"  # JEV_ENABLED=false
     NO_CONSENT = "no_consent"  # the prospect declined external processing
     NOT_CONFIGURED = "not_configured"

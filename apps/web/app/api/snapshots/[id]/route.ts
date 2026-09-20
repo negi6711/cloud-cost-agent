@@ -3,17 +3,17 @@ import { z } from "zod";
 
 import { errorResponse, newRequestId } from "@/lib/http";
 import { log } from "@/lib/log";
-import { leadSessionFrom } from "@/lib/request-session";
+import { visitorSessionFrom } from "@/lib/request-session";
 import { getSnapshotStatus } from "@/lib/snapshots";
 
 /**
- * Processing status for the upload page. Returns no findings: those are shown only after the
- * prospect signs in with the emailed link.
+ * Processing status and the teaser headline for the upload page. Deliberately no finding text,
+ * owner or next action: those are the report, and the report needs a verified email.
  */
 export async function GET(request: Request, ctx: RouteContext<"/api/snapshots/[id]">): Promise<NextResponse> {
   const requestId = newRequestId();
-  const session = leadSessionFrom(request);
-  if (!session) return errorResponse(401, requestId, "Your session has expired.");
+  const session = visitorSessionFrom(request);
+  if (!session) return errorResponse(401, requestId, "This upload session has expired. Please upload your file again.");
 
   const { id } = await ctx.params;
   if (!z.uuid().safeParse(id).success) return errorResponse(404, requestId, "Not found.");

@@ -5,7 +5,11 @@ import { z } from "zod";
 
 import { DeleteFileButton } from "@/components/admin-controls";
 import { FindingCard } from "@/components/finding-card";
+import { ManualReviewButton } from "@/components/manual-review-button";
+import { ProfileForm } from "@/components/profile-form";
 import { money, monthLabel, pct } from "@/lib/format";
+import { profileIncomplete } from "@/lib/profile";
+import { markReportViewed } from "@/lib/snapshots";
 import { getSnapshotDetail, type SnapshotDetail } from "@/lib/snapshot-detail";
 import { sourceFileForRun } from "@/lib/source-files";
 import { tenantForViewer } from "@/lib/snapshots";
@@ -55,6 +59,12 @@ export default async function SnapshotPage({ params }: PageProps<"/snapshot/[id]
   const tenantId = await tenantForViewer(viewer, id);
   const d = tenantId ? await getSnapshotDetail(tenantId, id) : null;
   if (!d) notFound(); // another workspace's snapshot is indistinguishable from a missing one
+
+  const owned = viewer.tenantIds.includes(tenantId!);
+  // Opening this page means the emailed one-time link was used, so the address is now proven.
+  // Admins looking at someone else's report must not stamp it as viewed by its owner.
+  if (owned) await markReportViewed(tenantId!, id, viewer.email);
+  const askProfile = owned && (await profileIncomplete(tenantId!));
 
   const fileId = await sourceFileForRun(tenantId!, id);
   const s = d.summary;
@@ -170,6 +180,31 @@ export default async function SnapshotPage({ params }: PageProps<"/snapshot/[id]
           {s ? ` (at least ${money(s.thresholds.material_absolute, cur)} a month, or +20%)` : ""}. Nothing needs a
           decision this month.
         </p>
+      )}
+
+      {askProfile && (
+        <section className="mt-10 rounded-xl border border-border p-5" aria-labelledby="profile-heading">
+          <h2 id="profile-heading" className="font-semibold">
+            Three quick questions <span className="text-sm font-normal text-muted">· optional</span>
+          </h2>
+          <p className="mt-1 text-sm text-muted">
+            Your report is above and stays yours either way. These answers help us judge what to build next.
+          </p>
+          <ProfileForm snapshotRunId={id} />
+        </section>
+      )}
+
+      {owned && done && (
+        <section className="mt-10 rounded-xl border border-border p-5" aria-labelledby="review-heading">
+          <h2 id="review-heading" className="font-semibold">
+            Want a person to go through this with you?
+          </h2>
+          <p className="mt-1 mb-3 text-sm text-muted">
+            We will read the snapshot with you and say what we would investigate first. No changes are made
+            to your AWS accounts.
+          </p>
+          <ManualReviewButton snapshotRunId={id} />
+        </section>
       )}
 
       {fileId && (

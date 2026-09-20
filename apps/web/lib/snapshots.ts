@@ -1,9 +1,9 @@
 import "server-only";
 
 import { PARSER_VERSION, QUESTION_SET_VERSION, type SnapshotRunStatus } from "@cca/config";
-import { auditEvent, consent, job, snapshotRun, sourceFile } from "@cca/db";
+import { auditEvent, job, lead, snapshotRun, sourceFile } from "@cca/db";
 import type { CreateSnapshotInput } from "@cca/domain";
-import { and, desc, eq } from "drizzle-orm";
+import { and, eq, isNull, sql } from "drizzle-orm";
 
 import { withAdmin, withTenant } from "./db";
 import { UserFacingError } from "./errors";
@@ -31,13 +31,9 @@ export async function createSnapshot(tenantId: string, input: CreateSnapshotInpu
       throw new UserFacingError(409, "This file was not accepted, so it cannot be analyzed.", "rejected_file");
     }
 
-    const [latestConsent] = await tx
-      .select({ granted: consent.granted })
-      .from(consent)
-      .where(and(eq(consent.sourceFileId, file.id), eq(consent.provider, "typesafe")))
-      .orderBy(desc(consent.createdAt))
-      .limit(1);
-    const consentBasis = latestConsent?.granted ? "typesafe:granted" : "typesafe:declined";
+    // Uploads happen before the email gate, so a new run is always the free deterministic phase.
+    // "pending" keeps every model provider unavailable until the report is unlocked.
+    const consentBasis = "pending";
 
     const inserted = await tx
       .insert(snapshotRun)
@@ -95,7 +91,10 @@ export async function createSnapshot(tenantId: string, input: CreateSnapshotInpu
   });
 }
 
-/** Status shown on the upload page. Deliberately no findings: those require login. */
+/**
+ * Status and teaser for the upload page, before any email is given. Headline numbers only: no
+ * finding text, no owner, no next action, no model output. The full report needs a verified email.
+ */
 export interface SnapshotStatus {
   id: string;
   status: SnapshotRunStatus;
@@ -106,6 +105,29 @@ export interface SnapshotStatus {
   completed: boolean;
   /** For a failed run: the worker's user-facing reason (our wording, never file contents). */
   message: string | null;
+  unlocked: boolean;
+  teaser: Teaser | null;
+}
+
+export interface Teaser {
+  currency: string | null;
+  periodStart: string | null;
+  periodEnd: string | null;
+  totalCovered: string;
+  baselineMonth: string | null;
+  currentMonth: string | null;
+  /** Whole-bill change between the two compared months. */
+  change: string | null;
+  changePct: string | null;
+  /** Largest single driver of the increase. */
+  topDriver: { label: string; change: string } | null;
+  /**
+   * Sum of the material increases found. This is money that MOVED, not money anyone can recover:
+   * the copy must call it "cost impact requiring investigation", never savings.
+   */
+  investigationImpact: string;
+  findingCount: number;
+  readinessScore: number | null;
 }
 
 interface StoredIssue {
@@ -130,6 +152,9 @@ export async function getSnapshotStatus(tenantId: string, runId: string): Promis
         rowsRejected: snapshotRun.rowsRejected,
         warnings: snapshotRun.warnings,
         completedAt: snapshotRun.completedAt,
+        unlockedAt: snapshotRun.unlockedAt,
+        summary: snapshotRun.summary,
+        findings: sql<number>`(select count(*)::int from snapshot_finding f where f.snapshot_run_id = ${snapshotRun.id})`,
       })
       .from(snapshotRun)
       .where(eq(snapshotRun.id, runId))
@@ -137,6 +162,8 @@ export async function getSnapshotStatus(tenantId: string, runId: string): Promis
   );
   if (!run) return null;
   return {
+    unlocked: run.unlockedAt !== null,
+    teaser: run.status === "completed" ? buildTeaser(run.summary, run.findings) : null,
     id: run.id,
     status: run.status as SnapshotRunStatus,
     rowsSeen: run.rowsSeen,
@@ -212,4 +239,58 @@ export async function tenantForViewer(
   const own = await findViewableSnapshot(viewer.tenantIds, runId);
   if (own) return own.tenantId;
   return viewer.isAdmin ? snapshotTenantForAdmin(runId) : null;
+}
+
+/** Headline numbers only, projected from the run summary the worker wrote. */
+function buildTeaser(summary: unknown, findingCount: number): Teaser | null {
+  if (!summary || typeof summary !== "object") return null;
+  const s = summary as SnapshotSummaryShape;
+  // Prefer the primary dimension (usually service): a region or account row would name the same
+  // money a second time, and "ECS" is a more useful headline than "us-east-1".
+  const changes = s.largest_changes ?? {};
+  const drivers = (s.dimension && changes[s.dimension]) || Object.values(changes).flat();
+  const top = drivers.filter((d) => Number(d.delta) > 0).sort((a, b) => Number(b.delta) - Number(a.delta))[0];
+  return {
+    currency: s.currency ?? null,
+    periodStart: s.period?.start ?? null,
+    periodEnd: s.period?.end ?? null,
+    totalCovered: s.total ?? "0",
+    baselineMonth: s.comparison?.baseline_month ?? null,
+    currentMonth: s.comparison?.current_month ?? null,
+    change: s.comparison?.delta ?? null,
+    changePct: s.comparison?.delta_pct ?? null,
+    topDriver: top ? { label: top.label, change: top.delta } : null,
+    investigationImpact: s.investigation_impact ?? "0",
+    findingCount,
+    readinessScore: s.readiness?.score ?? null,
+  };
+}
+
+interface SnapshotSummaryShape {
+  currency?: string | null;
+  dimension?: string;
+  period?: { start: string | null; end: string | null };
+  total?: string;
+  comparison?: { baseline_month: string; current_month: string; delta: string; delta_pct: string | null } | null;
+  largest_changes?: Record<string, { label: string; delta: string }[]>;
+  investigation_impact?: string;
+  readiness?: { score: number };
+}
+
+/**
+ * Record that the report was opened by the person it was unlocked for. Reaching the report page
+ * means the emailed one-time link was used, which is what proves the address belongs to them, so
+ * both stamps are written here. First write wins: these mark "when did this first happen".
+ */
+export async function markReportViewed(tenantId: string, runId: string, email: string): Promise<void> {
+  await withTenant(tenantId, async (tx) => {
+    await tx
+      .update(snapshotRun)
+      .set({ viewedAt: new Date() })
+      .where(and(eq(snapshotRun.id, runId), isNull(snapshotRun.viewedAt)));
+    await tx
+      .update(lead)
+      .set({ emailVerifiedAt: new Date() })
+      .where(and(eq(lead.email, email), isNull(lead.emailVerifiedAt)));
+  });
 }

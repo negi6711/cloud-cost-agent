@@ -2,22 +2,17 @@ import "server-only";
 
 import { createHash } from "node:crypto";
 
-import { auditEvent, consent, sourceFile } from "@cca/db";
-import {
-  type CompleteUploadInput,
-  type PresignUploadInput,
-  sanitizeFilename,
-  TYPESAFE_DISCLOSURE_VERSION,
-} from "@cca/domain";
+import { auditEvent, sourceFile } from "@cca/db";
+import { type CompleteUploadInput, type PresignUploadInput, sanitizeFilename } from "@cca/domain";
 import { and, eq, ne, type SQL } from "drizzle-orm";
 
 import { isUniqueViolation, withTenant } from "./db";
 import { serverEnv } from "./env";
 import { UserFacingError } from "./errors";
-import type { LeadSession } from "./lead-session";
 import { log } from "./log";
 import { signToken, verifyToken } from "./signing";
 import { SNIFF_MESSAGES, sniffUpload } from "./sniff";
+import type { UploadSession } from "./request-session";
 import { keyBelongsToTenant, newUploadKey, type PresignedUpload, storage } from "./storage";
 
 const GRANT_PURPOSE = "upload-grant/v1";
@@ -26,7 +21,6 @@ const GRANT_EXTRA_SECONDS = 15 * 60;
 
 interface UploadGrant {
   tenantId: string;
-  leadId: string;
   key: string;
   sizeBytes: number;
   filename: string;
@@ -37,7 +31,7 @@ export interface PresignResult {
   uploadToken: string;
 }
 
-export async function presignUpload(session: LeadSession, input: PresignUploadInput): Promise<PresignResult> {
+export async function presignUpload(session: UploadSession, input: PresignUploadInput): Promise<PresignResult> {
   const env = serverEnv();
   if (input.sizeBytes > env.UPLOAD_MAX_BYTES) {
     throw new UserFacingError(413, "The file is larger than the upload limit.", "too_large");
@@ -49,7 +43,6 @@ export async function presignUpload(session: LeadSession, input: PresignUploadIn
     GRANT_PURPOSE,
     {
       tenantId: session.tenantId,
-      leadId: session.leadId,
       key,
       sizeBytes: input.sizeBytes,
       filename: sanitizeFilename(input.filename),
@@ -70,18 +63,13 @@ export type CompleteResult =
  * earlier file instead of creating a second one.
  */
 export async function completeUpload(
-  session: LeadSession,
+  session: UploadSession,
   input: CompleteUploadInput,
   requestId: string,
 ): Promise<CompleteResult> {
   const env = serverEnv();
   const grant = verifyToken<UploadGrant>(env.AUTH_SECRET, GRANT_PURPOSE, input.uploadToken);
-  if (
-    !grant ||
-    grant.tenantId !== session.tenantId ||
-    grant.leadId !== session.leadId ||
-    !keyBelongsToTenant(grant.key, session.tenantId)
-  ) {
+  if (!grant || grant.tenantId !== session.tenantId || !keyBelongsToTenant(grant.key, session.tenantId)) {
     throw new UserFacingError(403, "This upload has expired. Please upload the file again.", "bad_grant");
   }
 
@@ -117,7 +105,7 @@ export async function completeUpload(
 }
 
 async function recordUpload(
-  session: LeadSession,
+  session: UploadSession,
   input: CompleteUploadInput,
   grant: UploadGrant,
   sizeBytes: number,
@@ -131,13 +119,7 @@ async function recordUpload(
       const [dup] = await tx
         .select({ id: sourceFile.id })
         .from(sourceFile)
-        .where(
-          and(
-            eq(sourceFile.leadId, session.leadId),
-            eq(sourceFile.sha256, sha256),
-            ne(sourceFile.status, "rejected"),
-          ),
-        )
+        .where(and(eq(sourceFile.sha256, sha256), ne(sourceFile.status, "rejected")))
         .limit(1);
       if (dup) {
         // The second copy is discarded. A retry of this same call then finds no object and asks for
@@ -152,7 +134,6 @@ async function recordUpload(
       .insert(sourceFile)
       .values({
         tenantId: session.tenantId,
-        leadId: session.leadId,
         storageKey: grant.key,
         originalFilename: grant.filename,
         mimeType: sniff.ok ? sniff.mimeType : "application/octet-stream",
@@ -164,27 +145,13 @@ async function recordUpload(
       .returning({ id: sourceFile.id });
     if (!row) throw new Error("completeUpload: insert returned no row");
 
-    await tx.insert(consent).values({
-      tenantId: session.tenantId,
-      leadId: session.leadId,
-      sourceFileId: row.id,
-      provider: "typesafe",
-      purpose: "decision_classification",
-      disclosureVersion: TYPESAFE_DISCLOSURE_VERSION,
-      granted: input.consent.typesafe,
-    });
-
     await tx.insert(auditEvent).values({
       tenantId: session.tenantId,
       actorType: "prospect",
       action: sniff.ok ? "upload.accepted" : "upload.rejected",
       objectType: "source_file",
       objectId: row.id,
-      metadata: {
-        sizeBytes,
-        typesafeConsent: input.consent.typesafe,
-        ...(sniff.ok ? {} : { reason: sniff.reason }),
-      },
+      metadata: { sizeBytes, ...(sniff.ok ? {} : { reason: sniff.reason }) },
     });
 
     if (!sniff.ok) {
