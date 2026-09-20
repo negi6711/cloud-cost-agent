@@ -109,7 +109,7 @@ def seed(owner: psycopg.Connection[DictRow], storage_dir: Path):  # type: ignore
         )
         owner.execute(
             "INSERT INTO snapshot_run (id, tenant_id, source_file_id, parser_version, status, question_set_version, "
-            "consent_basis) VALUES (%s, %s, %s, 'ce-csv/1', 'queued', 'jev-qs/1', %s)",
+            "consent_basis) VALUES (%s, %s, %s, 'ce-csv/2', 'queued', 'jev-qs/1', %s)",
             (run_id, tenant_id, file_id, consent_basis),
         )
         owner.execute(

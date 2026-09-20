@@ -201,3 +201,39 @@ def test_explanation_numbers_are_the_computed_facts() -> None:
 
 def test_categories_are_limited_to_the_four_live_decisions() -> None:
     assert {c.value for c in Category} == {"INVESTIGATE", "REQUEST_EVIDENCE", "MONITOR", "ESCALATE"}
+
+
+# ----------------------------------------------- multi-dimension exports ---
+
+
+def test_one_movement_described_by_several_dimensions_is_reported_once() -> None:
+    """In this export prod-main, us-east-1 and the Platform team are the same two rows. Reporting
+    each as its own finding would make one increase look like three."""
+    a = fixture("cur_camelcase.csv")
+    labels = [f.candidate.label for f in a.findings]
+    assert "Platform" in labels  # a team name is the most useful heading for those rows
+    assert "prod-main" not in labels and "us-east-1" not in labels
+    assert len(labels) == len(set(labels))
+
+
+def test_the_teaser_figure_never_exceeds_the_whole_bill_increase() -> None:
+    """Every row has one service, so service increases add up to at most the bill's increase. The
+    account, region and tag views of the same rows must not be added on top."""
+    a = fixture("cur_camelcase.csv")
+    impact = Decimal(a.summary["investigation_impact"])
+    whole_bill = Decimal(a.summary["comparison"]["delta"])
+    assert whole_bill == Decimal("3200.00")
+    assert Decimal(0) <= impact <= whole_bill
+    services = sum(
+        (f.candidate.delta for f in a.findings
+         if f.candidate.material and f.candidate.dimension == "service" and f.candidate.delta > 0),
+        Decimal(0),
+    )
+    assert impact == min(services, whole_bill)
+
+
+def test_a_partial_current_month_is_not_compared() -> None:
+    a = fixture("cur_partial_month.csv")
+    assert a.abstained is True
+    assert a.summary["comparison"] is None
+    assert Decimal(a.summary["investigation_impact"]) == Decimal(0)

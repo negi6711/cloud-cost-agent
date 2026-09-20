@@ -151,9 +151,11 @@ def _money(d: Decimal | None) -> str | None:
 
 def _summary(view: MonthlyView, result: ParseResult, detection: Detection, ready: Readiness) -> dict[str, Any]:
     comparison = None
+    whole_bill_rise: Decimal | None = None
     if detection.comparison:
         b, c = detection.comparison
         delta = view.totals[c] - view.totals[b]
+        whole_bill_rise = delta
         comparison = {
             "baseline_month": f"{b:%Y-%m}",
             "current_month": f"{c:%Y-%m}",
@@ -177,8 +179,17 @@ def _summary(view: MonthlyView, result: ParseResult, detection: Detection, ready
 
     # The teaser headline: how much month-over-month increase the material findings account for.
     # This is money that MOVED, not money anyone can recover; the copy must never call it savings.
-    investigation_impact = sum(
-        (c.delta for c in detection.candidates if c.material and c.delta > 0), Decimal(0)
+    #
+    # Only the primary dimension counts. Every row has exactly one service, so service increases add
+    # up to at most the whole bill's increase; adding the account, region and tag views of the same
+    # rows would count the same money three more times. The whole-bill increase is a hard ceiling.
+    rise = sum(
+        (c.delta for c in detection.candidates
+         if c.material and c.delta > 0 and c.dimension == result.primary_dimension),
+        Decimal(0),
+    )
+    investigation_impact = (
+        min(rise, whole_bill_rise) if whole_bill_rise is not None and whole_bill_rise > 0 else rise
     )
     return {
         "version": 1,

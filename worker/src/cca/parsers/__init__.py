@@ -82,7 +82,9 @@ def _parse(data: bytes, today: date) -> ParseResult:
         issues.append(Issue("credits_present", Severity.INFO,
                             "Credits or refunds (negative amounts) are included in the totals.", count=len(credits)))
 
-    granularity, months, period_issues = _periods(normalized.records, today)
+    granularity, months, period_issues = _periods(
+        normalized.records, today, normalized.coverage_end, normalized.flagged_partial
+    )
     issues += period_issues
 
     return ParseResult(
@@ -106,7 +108,12 @@ def _month(d: date) -> date:
     return d.replace(day=1)
 
 
-def _periods(records: list[CostRecord], today: date) -> tuple[Granularity, list[MonthCoverage], list[Issue]]:
+def _periods(
+    records: list[CostRecord],
+    today: date,
+    coverage_end: dict[date, date] | None = None,
+    flagged_partial: set[date] | None = None,
+) -> tuple[Granularity, list[MonthCoverage], list[Issue]]:
     dates = sorted({r.period_start for r in records})
     by_month: dict[date, set[date]] = defaultdict(set)
     for d in dates:
@@ -125,12 +132,18 @@ def _periods(records: list[CostRecord], today: date) -> tuple[Granularity, list[
     for month in sorted(by_month):
         days = by_month[month]
         days_in_month = calendar.monthrange(month.year, month.month)[1]
+        month_end = month.replace(day=days_in_month)
+        # A monthly row can cover part of its month and still start on the 1st, so the file's own
+        # end date (or its partial-period flag) decides, not the calendar.
+        reaches = (coverage_end or {}).get(month)
         if month >= current_month:
             months.append(MonthCoverage(month, False, "month_to_date"))
         elif granularity is Granularity.MONTHLY and min(days).day != 1:
             months.append(MonthCoverage(month, False, "starts_mid_month"))
         elif granularity is not Granularity.MONTHLY and len(days) < days_in_month:
             months.append(MonthCoverage(month, False, "missing_days"))
+        elif month in (flagged_partial or set()) or (reaches is not None and reaches < month_end):
+            months.append(MonthCoverage(month, False, "ends_mid_month"))
         else:
             months.append(MonthCoverage(month, True))
 

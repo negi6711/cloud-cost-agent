@@ -1,6 +1,6 @@
 # Billing export parser (`worker/src/cca/parsers`)
 
-Parser version: `ce-csv/1` (bump in `worker/src/cca/versions.py` and `packages/config/src/index.ts`
+Parser version: `ce-csv/2` (bump in `worker/src/cca/versions.py` and `packages/config/src/index.ts`
 together whenever output changes).
 
 ## Accepted input
@@ -11,12 +11,28 @@ together whenever output changes).
 | Delimiter | `,` `;` tab `\|`, detected from the first 50 lines |
 | Limits | ≤ 25 MB, ≤ 1,000,000 lines, ≤ 1,000 columns, ≤ 10,000 chars per field |
 | Layout: Cost Explorer (wide) | First header cell = group-by dimension (`Service`, `Linked account`, `Region`, `Usage type`, `Tag: …`, …); other headers = group values with a currency marker such as `($)`; optional `Total costs($)` column and `<Dimension> total` row; one row per period |
-| Layout: long | Header aliases for date, cost, service, account, region, usage type, currency (including CUR-style `lineItem/UnblendedCost`) |
+| Layout: long | Header aliases for date, period end, cost, service, account, region, usage type, ownership tag, currency and a partial-period flag. Headers are matched after camelCase is split, so `TimePeriodStart`, `UnblendedCost` and `LinkedAccountName` read the same as `Time period start`, `Unblended cost` and `Linked account name`; slash-qualified CUR names (`lineItem/UnblendedCost`) match whole |
 | Dates | `YYYY-MM-DD`, `YYYY-MM`, ISO with time; `M/D/YYYY` or `D/M/YYYY` decided from the whole column (all-ambiguous → month/day with a warning) |
 | Money | `Decimal` only. `1,234.56`, `$12`, `-$3`, `(4.00)` (negative), exponents. Semicolon files read `1234,56` as a decimal comma |
 
 A Cost Explorer CSV holds **one** group-by dimension. Account or region changes are available only
 when the file is grouped that way or is a long export with those columns.
+
+### Reading a long export well
+
+* **Alias order is priority order.** An export carrying both `LinkedAccountId` and
+  `LinkedAccountName` is read by name, because "prod-main up $3,100" is a sentence someone can act
+  on and "222222222222 up $3,100" is not.
+* **A quantity column is not money.** Only cost aliases are summed; `UsageQuantity` and account
+  numbers are never treated as amounts. Misreading a long export as the wide layout did exactly
+  that, so `test_cost_and_usage_report_headers_are_read_as_long_not_wide` asserts the total.
+* **An end date beats the calendar.** A monthly row can start on the 1st and still cover only part
+  of its month. When the export has an end-date column or a partial-period flag, that decides
+  completeness (`ends_mid_month`), which keeps a truncated month out of a comparison.
+* **One movement, one finding.** When several dimensions describe exactly the same source rows
+  (`prod-main`, `us-east-1` and the `Platform` team can be the same two lines), the detector keeps
+  the most useful heading and drops the restatements. Overlapping-but-different sets are kept: a
+  service inside a team's spend is a narrower fact, not a repetition.
 
 ## Never
 
@@ -33,7 +49,7 @@ when the file is grouped that way or is a long export with those columns.
 | `duplicate_rows` | warning | Exact duplicate lines counted once |
 | `conflicting_duplicate_periods` / `conflicting_duplicate_keys` | warning | Same period/key with different values; kept |
 | `totals_do_not_reconcile` | warning | The file's own total row/column disagrees with its values (tolerance 0.01) |
-| `partial_period` | warning | Months that start mid-month, are month-to-date, or miss days |
+| `partial_period` | warning | Months that start mid-month, are month-to-date, miss days, or end early (`ends_mid_month`) |
 | `insufficient_periods` | warning | Fewer than two complete months: no period-over-period comparison |
 | `irregular_dates` | warning | Neither monthly nor consecutive days |
 | `date_format_assumed` | warning | Ambiguous slash dates read as month/day/year |

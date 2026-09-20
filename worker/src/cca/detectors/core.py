@@ -131,14 +131,55 @@ def detect(view: MonthlyView, file_sha256: str) -> Detection:
             candidates.append(_unallocated_candidate(view, current_month, comparison, unallocated_amount,
                                                      unallocated_share, t, file_sha256))
 
-    candidates.sort(key=_rank_key)
+    candidates.sort(key=lambda c: _rank_key(c, view.primary_dimension))
+    candidates = _drop_restatements(view, candidates, comparison)
     notes = [] if comparison else ["no_comparison"]
     return Detection(t, comparison, candidates[:MAX_FINDINGS], top, largest, unallocated_share, unallocated_amount, notes)
 
 
-def _rank_key(c: Candidate) -> tuple[int, Decimal, str]:
+# Which heading describes a movement best when several describe it equally well. The group-by the
+# export was built around comes first; an ownership tag names a team, which beats an account number.
+_DIMENSION_PREFERENCE = ("tag", "service", "account", "region", "usage_type")
+
+
+def _dimension_preference(dimension: str, primary: str) -> int:
+    if dimension == primary:
+        return 0
+    if dimension in _DIMENSION_PREFERENCE:
+        return 1 + _DIMENSION_PREFERENCE.index(dimension)
+    return 1 + len(_DIMENSION_PREFERENCE)
+
+
+def _rank_key(c: Candidate, primary: str) -> tuple[int, Decimal, int, str]:
     # Material changes first, then by size of the change (or amount, for unallocated spend).
-    return (0 if c.material_absolute else 1, -c.delta, c.evidence_id)
+    return (0 if c.material_absolute else 1, -c.delta, _dimension_preference(c.dimension, primary), c.evidence_id)
+
+
+def _row_set(view: MonthlyView, key: Key, months: list[date]) -> frozenset[str]:
+    """Every source row behind one key over the compared months (untruncated, unlike source_refs)."""
+    refs: set[str] = set()
+    for m in months:
+        refs.update(view.refs.get(key, {}).get(m, []))
+    return frozenset(refs)
+
+
+def _drop_restatements(view: MonthlyView, candidates: list[Candidate], comparison: tuple[date, date] | None) -> list[Candidate]:
+    """One movement can be described by several dimensions at once: "us-west-2 up $125,103.92" and
+    "999999999999 up $125,103.92" are the same rows under different headings. Keep the best-ranked
+    description and drop the exact restatements. Overlapping-but-different sets are left alone: a
+    service inside a team's spend is a narrower fact, not a repetition."""
+    if comparison is None:
+        return candidates
+    months = [comparison[0], comparison[1]]
+    kept: list[Candidate] = []
+    seen: list[frozenset[str]] = []
+    for c in candidates:
+        rows = _row_set(view, (c.dimension, c.label), months)
+        if rows and rows in seen:
+            continue
+        kept.append(c)
+        seen.append(rows)
+    return kept
 
 
 def _top_items(view: MonthlyView) -> list[tuple[str, Decimal, Decimal]]:

@@ -156,6 +156,37 @@ def main() -> None:
     ], {"2026-06-01": ["100.00", "10.00", "5.00"], "2026-07-01": ["900.00", "12.00", "6.00"]}).replace(
         '=HYPERLINK("http://evil.test";"click")($)', '"=HYPERLINK(""http://evil.test"";""click"")($)"'))
 
+    # 19. Cost and Usage Report style: camelCase headers, an id and a name for the account, a team
+    # tag, a usage-quantity column that must never be mistaken for money, and an explicit end date.
+    cur_header = ("TimePeriodStart,TimePeriodEnd,LinkedAccountId,LinkedAccountName,Region,Service,"
+                  "UsageType,UsageQuantity,UnblendedCost,Currency,Team,IsPartialPeriod")
+    cur_rows = [
+        # start, end, service, usage type, quantity, cost, account id, account name, region, team
+        ("2026-05-01", "2026-05-31", "Amazon EC2", "BoxUsage:m6i.large", "1000", "2000.00", "prod-main"),
+        ("2026-05-01", "2026-05-31", "Amazon S3", "TimedStorage-ByteHrs", "500", "500.00", "prod-main"),
+        ("2026-05-01", "2026-05-31", "Amazon RDS", "InstanceUsage:db.r6g", "700", "1000.00", "prod-eu"),
+        ("2026-06-01", "2026-06-30", "Amazon EC2", "BoxUsage:m6i.large", "2500", "5000.00", "prod-main"),
+        ("2026-06-01", "2026-06-30", "Amazon S3", "TimedStorage-ByteHrs", "560", "600.00", "prod-main"),
+        ("2026-06-01", "2026-06-30", "Amazon RDS", "InstanceUsage:db.r6g", "760", "1100.00", "prod-eu"),
+    ]
+    accounts = {"prod-main": ("222222222222", "us-east-1", "Platform"),
+                "prod-eu": ("333333333333", "eu-west-1", "Data")}
+
+    def cur(rows: list[tuple[str, ...]], *, partial_from: str | None = None) -> str:
+        out = [cur_header]
+        for start, end, service, usage_type, quantity, cost, account in rows:
+            acct_id, region, team = accounts[account]
+            partial = "true" if partial_from and start == partial_from else "false"
+            out.append(",".join([start, end, acct_id, account, region, service, usage_type,
+                                 quantity, cost, "USD", team, partial]))
+        return "\n".join(out) + "\n"
+
+    write("cur_camelcase.csv", cur(cur_rows))
+
+    # 20. The same export with a current month that stops on the 18th and says so.
+    truncated = [(*row[:1], "2026-06-18", *row[2:]) if row[0] == "2026-06-01" else row for row in cur_rows]
+    write("cur_partial_month.csv", cur(truncated, partial_from="2026-06-01"))
+
     # 15-18. Structural failures.
     write("empty.csv", b"")
     write("header_only.csv", "Service,Amazon EC2($),Total costs($)\n")

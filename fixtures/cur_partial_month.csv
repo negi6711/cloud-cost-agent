@@ -1,0 +1,7 @@
+TimePeriodStart,TimePeriodEnd,LinkedAccountId,LinkedAccountName,Region,Service,UsageType,UsageQuantity,UnblendedCost,Currency,Team,IsPartialPeriod
+2026-05-01,2026-05-31,222222222222,prod-main,us-east-1,Amazon EC2,BoxUsage:m6i.large,1000,2000.00,USD,Platform,false
+2026-05-01,2026-05-31,222222222222,prod-main,us-east-1,Amazon S3,TimedStorage-ByteHrs,500,500.00,USD,Platform,false
+2026-05-01,2026-05-31,333333333333,prod-eu,eu-west-1,Amazon RDS,InstanceUsage:db.r6g,700,1000.00,USD,Data,false
+2026-06-01,2026-06-18,222222222222,prod-main,us-east-1,Amazon EC2,BoxUsage:m6i.large,2500,5000.00,USD,Platform,true
+2026-06-01,2026-06-18,222222222222,prod-main,us-east-1,Amazon S3,TimedStorage-ByteHrs,560,600.00,USD,Platform,true
+2026-06-01,2026-06-18,333333333333,prod-eu,eu-west-1,Amazon RDS,InstanceUsage:db.r6g,760,1100.00,USD,Data,true

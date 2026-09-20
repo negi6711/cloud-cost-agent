@@ -82,7 +82,8 @@ class CostRecord:
 class MonthCoverage:
     month_start: date
     complete: bool
-    reason: str | None = None  # why incomplete: "starts_mid_month", "month_to_date", "missing_days"
+    # why incomplete: "starts_mid_month", "month_to_date", "missing_days", "ends_mid_month"
+    reason: str | None = None
 
 
 @dataclass

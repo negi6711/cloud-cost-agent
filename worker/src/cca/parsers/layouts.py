@@ -44,32 +44,56 @@ _WIDE_DIMENSIONS: tuple[tuple[re.Pattern[str], str], ...] = (
 # Long layout: normalized header -> field.
 _LONG_ALIASES: dict[str, tuple[str, ...]] = {
     "date": ("date", "period", "month", "start date", "usage start date", "bill period", "billing period",
-             "time period", "lineitem/usagestartdate", "line_item_usage_start_date"),
+             "time period", "time period start", "period start", "billing period start date", "start",
+             "lineitem/usagestartdate", "line_item_usage_start_date", "bill/billingperiodstartdate"),
+    # The end of the period a row covers. Used only to tell a truncated month from a complete one.
+    "period_end": ("end date", "usage end date", "time period end", "period end", "billing period end date",
+                   "lineitem/usageenddate", "line_item_usage_end_date", "bill/billingperiodenddate"),
     "cost": ("cost", "amount", "unblended cost", "unblendedcost", "blended cost", "net cost", "amortized cost",
-             "net unblended cost", "total cost", "lineitem/unblendedcost", "line_item_unblended_cost"),
-    "service": ("service", "service name", "product", "product name", "product code",
+             "net unblended cost", "net amortized cost", "cost amount", "total cost",
+             "lineitem/unblendedcost", "line_item_unblended_cost"),
+    "service": ("service", "service name", "product name", "product", "product code",
                 "lineitem/productcode", "line_item_product_code"),
-    "account": ("account", "linked account", "account id", "linked account id", "usage account id",
+    "account": ("linked account name", "account name", "account", "linked account",
+                "linked account id", "account id", "usage account id",
                 "lineitem/usageaccountid", "line_item_usage_account_id"),
     "region": ("region", "product/region", "product_region"),
     "usage_type": ("usage type", "lineitem/usagetype", "line_item_usage_type"),
+    # An ownership tag, if the export carries one: this is what lets a finding name a team.
+    "tag": ("team", "owner", "cost center", "business unit", "resource tags user team",
+            "resourcetags/user:team", "resourcetags/user:owner", "resourcetags/user:costcenter"),
     "currency": ("currency", "currency code", "lineitem/currencycode", "line_item_currency_code"),
+    # AWS marks a row that covers only part of its period; we trust it over our own date arithmetic.
+    "partial": ("is partial period", "ispartialperiod", "partial period", "partial"),
 }
-_LONG_DIMENSIONS = ("service", "account", "region", "usage_type")
+_LONG_DIMENSIONS = ("service", "account", "region", "usage_type", "tag")
+
+
+_CAMEL = re.compile(r"(?<=[a-z0-9])(?=[A-Z])|(?<=[A-Z])(?=[A-Z][a-z])")
 
 
 def _norm_header(h: str) -> str:
+    """"TimePeriodStart" -> "time period start". CUR exports write headers in camelCase, Cost
+    Explorer writes them with spaces, and both are common; the aliases below are the spaced form.
+    Slash-qualified CUR names ("lineItem/UnblendedCost") are matched whole, lowercased."""
     base, _ = split_header_currency(h)
-    return re.sub(r"\s+", " ", base.replace("_", " ").strip().lower()) if "/" not in base else base.strip().lower()
+    if "/" in base:
+        return base.strip().lower()
+    spaced = _CAMEL.sub(" ", base.replace("_", " ").strip())
+    return re.sub(r"\s+", " ", spaced).lower()
 
 
 def map_long_columns(header: list[str]) -> dict[str, int]:
+    """Alias order is priority order, not just a set: an export that carries both
+    LinkedAccountName and LinkedAccountId should be read by name, because "prod-main up $4,256"
+    is a sentence a person can act on and "555555555555 up $4,256" is not."""
     mapping: dict[str, int] = {}
     normalized = [_norm_header(h) for h in header]
     for fieldname, aliases in _LONG_ALIASES.items():
-        for idx, h in enumerate(normalized):
-            if h in aliases or h.replace(" ", "_") in aliases:
-                mapping.setdefault(fieldname, idx)
+        for alias in aliases:
+            idx = next((i for i, h in enumerate(normalized) if alias in (h, h.replace(" ", "_"))), None)
+            if idx is not None:
+                mapping[fieldname] = idx
                 break
     return mapping
 
@@ -85,6 +109,10 @@ class Normalized:
     stats: ParseStats
     issues: list[Issue] = field(default_factory=list)
     rejections: list[Rejection] = field(default_factory=list)
+    #: month start -> the last day that month's rows actually cover (from an end-date column).
+    coverage_end: dict[date, date] = field(default_factory=dict)
+    #: months the export itself marked as partial.
+    flagged_partial: set[date] = field(default_factory=set)
 
 
 def looks_long(header: list[str]) -> bool:
@@ -104,6 +132,10 @@ def looks_wide(rows: list[tuple[int, list[str]]]) -> bool:
     order, _ = infer_slash_order(data)
     dated = sum(1 for v in data if parse_date(v, order) is not None)
     return dated >= max(1, len(data) // 2)
+
+
+def _is_true(value: str) -> bool:
+    return value.strip().lower() in {"true", "yes", "y", "1", "t"}
 
 
 def _is_total_label(value: str) -> bool:
@@ -257,6 +289,8 @@ def normalize_long(rows: list[tuple[int, list[str]]], *, decimal_comma: bool) ->
     keys: dict[tuple[object, ...], Decimal] = {}
     conflicting = 0
     currencies: set[str] = set()
+    coverage_end: dict[date, date] = {}
+    flagged_partial: set[date] = set()
 
     for line, fields in rows[1:]:
         stats.lines_seen += 1
@@ -299,6 +333,15 @@ def normalize_long(rows: list[tuple[int, list[str]]], *, decimal_comma: bool) ->
         stats.lines_accepted += 1
         records.append(CostRecord(period, dimensions, value, currency, line, None, unallocated))
 
+        # How far this month's data reaches, so a truncated month is not compared as a whole one.
+        month = period.replace(day=1)
+        if "period_end" in cols:
+            end = parse_date(fields[cols["period_end"]], order)
+            if end is not None and end >= period:
+                coverage_end[month] = max(coverage_end.get(month, end), end)
+        if "partial" in cols and _is_true(fields[cols["partial"]]):
+            flagged_partial.add(month)
+
     if conflicting:
         issues.append(Issue("conflicting_duplicate_keys", Severity.WARNING,
                             "Some date and dimension combinations appear more than once with different costs; "
@@ -312,4 +355,4 @@ def normalize_long(rows: list[tuple[int, list[str]]], *, decimal_comma: bool) ->
     primary = "service" if "service" in dims else dims[0]
     return Normalized(Layout.LONG, primary, primary.replace("_", " ").title(), tuple(dims),
                       next(iter(currencies)) if len(currencies) == 1 else None,
-                      records, stats, issues, rejections)
+                      records, stats, issues, rejections, coverage_end, flagged_partial)

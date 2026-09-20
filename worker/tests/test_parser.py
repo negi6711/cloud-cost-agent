@@ -77,6 +77,38 @@ def test_long_layout_keeps_all_dimensions() -> None:
     assert result.currency == "USD"
 
 
+def test_cost_and_usage_report_headers_are_read_as_long_not_wide() -> None:
+    """A CUR export writes headers in camelCase ("TimePeriodStart", "UnblendedCost"). Reading it as
+    the wide layout would treat account numbers and usage quantities as money, so the total is the
+    assertion that matters: 3,500 + 6,700, not billions."""
+    result = parse("cur_camelcase.csv")
+    assert result.layout is Layout.LONG
+    assert result.granularity is Granularity.MONTHLY
+    assert result.currency == "USD"
+    assert result.total_cost == Decimal("10200.00")
+    assert by_month(result) == {date(2026, 5, 1): Decimal("3500.00"), date(2026, 6, 1): Decimal("6700.00")}
+    assert result.stats.lines_accepted == 6 and result.stats.lines_rejected == 0
+    assert result.primary_dimension == "service"
+    assert set(result.dimensions_available) == {"service", "account", "region", "usage_type", "tag"}
+
+
+def test_an_account_with_both_an_id_and_a_name_is_labelled_by_name() -> None:
+    # "prod-main up $3,100" is a sentence someone can act on; "222222222222 up $3,100" is not.
+    result = parse("cur_camelcase.csv")
+    assert {r.dimension("account") for r in result.records} == {"prod-main", "prod-eu"}
+    assert {r.dimension("tag") for r in result.records} == {"Platform", "Data"}
+
+
+def test_a_month_that_ends_early_is_incomplete_even_when_it_starts_on_the_first() -> None:
+    """The rows start on the 1st and the month is in the past, so only the file's own end date and
+    partial flag can reveal that June stops on the 18th."""
+    result = parse("cur_partial_month.csv")
+    june = next(m for m in result.months if m.month_start == date(2026, 6, 1))
+    assert june.complete is False and june.reason == "ends_mid_month"
+    assert next(m for m in result.months if m.month_start == date(2026, 5, 1)).complete is True
+    assert "insufficient_periods" in codes(result) and "partial_period" in codes(result)
+
+
 def test_daily_data_is_recognized_and_complete_months_detected() -> None:
     result = parse("valid_long_daily.csv")
     assert result.granularity is Granularity.DAILY
