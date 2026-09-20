@@ -1,0 +1,9 @@
+TimePeriodStart,TimePeriodEnd,LinkedAccountId,LinkedAccountName,Region,Service,UsageType,Operation,ResourceId,UsageQuantity,UsageUnit,UnblendedCost,Currency,LineItemType,Environment,Team
+2026-05-01,2026-05-31,123456789012,prod-platform,us-east-1,Amazon Elastic Compute Cloud - Compute,BoxUsage:m6i.large,RunInstances,arn:aws:us-east-1:123456789012:asg/api,43800.00,Hrs,4204.80,USD,Usage,production,platform
+2026-05-01,2026-05-31,123456789012,prod-platform,us-east-1,Amazon Simple Storage Service,TimedStorage-ByteHrs,StandardStorage,arn:aws:us-east-1:123456789012:bucket/app-assets,23000.00,GB-Mo,529.00,USD,Usage,production,platform
+2026-05-01,2026-05-31,123456789012,prod-platform,us-east-1,Amazon Relational Database Service,InstanceUsage:db.r6g.large,CreateDBInstance,arn:aws:us-east-1:123456789012:db/primary,2190.00,Hrs,569.40,USD,Usage,production,data
+2026-06-01,2026-06-30,123456789012,prod-platform,us-east-1,Amazon Elastic Compute Cloud - Compute,BoxUsage:m6i.large,RunInstances,arn:aws:us-east-1:123456789012:asg/api,44676.00,Hrs,4288.90,USD,Usage,production,platform
+2026-06-01,2026-06-30,123456789012,prod-platform,us-east-1,Amazon Simple Storage Service,TimedStorage-ByteHrs,StandardStorage,arn:aws:us-east-1:123456789012:bucket/app-assets,23690.00,GB-Mo,544.87,USD,Usage,production,platform
+2026-06-01,2026-06-30,123456789012,prod-platform,us-east-1,Amazon Relational Database Service,InstanceUsage:db.r6g.large,CreateDBInstance,arn:aws:us-east-1:123456789012:db/primary,2180.85,Hrs,567.02,USD,Usage,production,data
+2026-06-01,2026-06-30,210987654321,prod-eu,eu-west-1,Amazon Elastic Compute Cloud - Compute,EUW1-BoxUsage:m6i.large,RunInstances,arn:aws:eu-west-1:210987654321:asg/eu-api,14600.00,Hrs,1513.73,USD,Usage,production,platform
+2026-06-01,2026-06-30,210987654321,prod-eu,eu-west-1,Amazon Simple Storage Service,EUW1-TimedStorage-ByteHrs,StandardStorage,arn:aws:eu-west-1:210987654321:bucket/eu,8000.00,GB-Mo,191.36,USD,Usage,production,platform

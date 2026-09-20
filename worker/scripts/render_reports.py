@@ -8,6 +8,7 @@ finding quality across a test corpus without uploading each file by hand.
 
 from __future__ import annotations
 
+import os
 import sys
 from datetime import date
 from decimal import Decimal
@@ -21,7 +22,9 @@ from cca.settings import get_settings
 from cca.snapshots.analyze import analyze
 from cca.snapshots.explain import TemplateExplanationProvider
 
-TODAY = date(2026, 7, 15)
+# The corpus states the date it was "exported on"; a month-to-date period can only be detected
+# relative to that. Override with CCA_TODAY=YYYY-MM-DD.
+TODAY = date.fromisoformat(os.environ.get("CCA_TODAY", "2026-07-15"))
 
 
 def money(amount: str | Decimal | None, currency: str | None) -> str:

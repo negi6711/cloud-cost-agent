@@ -1,0 +1,10 @@
+TimePeriodStart,TimePeriodEnd,LinkedAccountId,LinkedAccountName,Region,Service,UsageType,Operation,ResourceId,UsageQuantity,UsageUnit,UnblendedCost,Currency,LineItemType,Environment,Team
+2026-05-01,2026-05-31,123456789012,prod-platform,us-east-1,Amazon Elastic Compute Cloud - Compute,BoxUsage:m6i.large,RunInstances,arn:aws:us-east-1:123456789012:asg/api,43800.00,Hrs,4204.80,USD,Usage,production,platform
+2026-05-01,2026-05-31,123456789012,prod-platform,us-east-1,Amazon Simple Storage Service,TimedStorage-ByteHrs,StandardStorage,arn:aws:us-east-1:123456789012:bucket/app-assets,23000.00,GB-Mo,529.00,USD,Usage,production,platform
+2026-05-01,2026-05-31,123456789012,prod-platform,us-east-1,Amazon Relational Database Service,InstanceUsage:db.r6g.large,CreateDBInstance,arn:aws:us-east-1:123456789012:db/primary,2190.00,Hrs,569.40,USD,Usage,production,data
+2026-05-01,2026-05-31,123456789012,prod-platform,us-east-1,AWS Data Transfer,USE1-DataTransfer-Out-Bytes,PublicIP-Out,arn:aws:us-east-1:123456789012:dt/internet,9000.00,GB,810.00,USD,Usage,production,platform
+2026-05-01,2026-05-31,123456789012,prod-platform,us-east-1,Amazon Elastic Compute Cloud - Compute,Credit,Credit,,1.00,Each,-1200.00,USD,Credit,production,platform
+2026-06-01,2026-06-30,123456789012,prod-platform,us-east-1,Amazon Elastic Compute Cloud - Compute,BoxUsage:m6i.large,RunInstances,arn:aws:us-east-1:123456789012:asg/api,44238.00,Hrs,4246.85,USD,Usage,production,platform
+2026-06-01,2026-06-30,123456789012,prod-platform,us-east-1,Amazon Simple Storage Service,TimedStorage-ByteHrs,StandardStorage,arn:aws:us-east-1:123456789012:bucket/app-assets,23167.67,GB-Mo,532.86,USD,Usage,production,platform
+2026-06-01,2026-06-30,123456789012,prod-platform,us-east-1,Amazon Relational Database Service,InstanceUsage:db.r6g.large,CreateDBInstance,arn:aws:us-east-1:123456789012:db/primary,2194.01,Hrs,570.44,USD,Usage,production,data
+2026-06-01,2026-06-30,123456789012,prod-platform,us-east-1,AWS Data Transfer,USE1-DataTransfer-Out-Bytes,PublicIP-Out,arn:aws:us-east-1:123456789012:dt/internet,9090.00,GB,818.10,USD,Usage,production,platform
