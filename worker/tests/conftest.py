@@ -17,7 +17,8 @@ from cca.settings import REPO_ROOT, Settings
 
 
 def _load_dotenv(path: Path) -> None:
-    """Minimal .env reader for test-only variables (TEST_DATABASE_*); never overrides the environment."""
+    """Read ONLY the TEST_* variables from .env. Loading everything would let the developer's real
+    settings (a live API key, JEV_ENABLED=true) change what the tests exercise."""
     if not path.exists():
         return
     for line in path.read_text(encoding="utf-8").splitlines():
@@ -25,7 +26,8 @@ def _load_dotenv(path: Path) -> None:
         if not line or line.startswith("#") or "=" not in line:
             continue
         key, _, value = line.partition("=")
-        os.environ.setdefault(key.strip(), value.strip())
+        if key.strip().startswith("TEST_"):
+            os.environ.setdefault(key.strip(), value.strip())
 
 
 _load_dotenv(REPO_ROOT / ".env")
@@ -44,7 +46,10 @@ def storage_dir(tmp_path: Path) -> Path:
 
 @pytest.fixture
 def settings(storage_dir: Path) -> Settings:
+    # _env_file=None: tests must never inherit the developer's .env (a real key there once made a
+    # "not configured" test fail).
     return Settings(
+        _env_file=None,
         DATABASE_URL=TEST_DATABASE_URL,
         WORKER_SHARED_SECRET=TEST_SECRET,
         STORAGE_DRIVER="local",

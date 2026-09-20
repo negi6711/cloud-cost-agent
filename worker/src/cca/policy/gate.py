@@ -6,7 +6,9 @@ final category from rules that the model cannot change:
 1. The category is always one of the four live decisions (enforced by the enum and a DB CHECK).
 2. No classification -> the rule-based default, human review required.
 3. Low confidence, a model-requested review, or disagreement with deterministic materiality
-   -> human review required.
+   -> human review required. Pick-one and score answers are judged by the model's own confidence;
+   yes/no answers have no confidence, so they are judged by their distance from a coin toss
+   (|2p-1|) against a separate, looser threshold.
 4. Data readiness below the threshold -> REQUEST_EVIDENCE.
 5. New or unallocated spend is never "just monitor": it has no confirmed owner -> REQUEST_EVIDENCE.
 6. A high-severity material change is never "just monitor" -> INVESTIGATE.
@@ -36,12 +38,18 @@ class Decision:
     review_required: bool
 
 
-def noul_margin(p: float) -> float:
+def margin(p: float) -> float:
     """A yes/no probability's distance from a coin toss, on the same 0-1 scale as confidence."""
     return abs(2 * p - 1)
 
 
-def decide(candidate: Candidate, outcome: ClassificationOutcome, readiness_score: int, low_confidence: float) -> Decision:
+def decide(
+    candidate: Candidate,
+    outcome: ClassificationOutcome,
+    readiness_score: int,
+    low_confidence: float,
+    noul_margin: float = 0.3,
+) -> Decision:
     reasons: list[str] = []
     review = False
     c = outcome.classification
@@ -59,7 +67,7 @@ def decide(candidate: Candidate, outcome: ClassificationOutcome, readiness_score
             low.append("category")
         if c.owner_answer.confidence < low_confidence:
             low.append("owner")
-        if noul_margin(c.change_material) < low_confidence:
+        if margin(c.change_material) < noul_margin:
             low.append("materiality")
         if low:
             model_status = ModelStatus.LOW_CONFIDENCE

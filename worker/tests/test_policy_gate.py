@@ -6,7 +6,7 @@ from decimal import Decimal
 
 import pytest
 
-from cca.policy.gate import PolicyStatus, decide, noul_margin
+from cca.policy.gate import PolicyStatus, decide, margin
 from cca.providers.base import (
     ChoiceAnswer,
     Classification,
@@ -73,10 +73,17 @@ def test_low_confidence_requires_review_but_keeps_the_answer() -> None:
     assert "low_confidence:category" in d.reasons and d.review_required
 
 
-def test_uncertain_yes_no_answer_counts_as_low_confidence() -> None:
-    assert noul_margin(0.55) == pytest.approx(0.1)
+def test_a_coin_toss_yes_no_answer_counts_as_low_confidence() -> None:
+    assert margin(0.55) == pytest.approx(0.1)
     d = decide(CANDIDATE, ok(classification(change_material=0.55)), 85, 0.5)
     assert "low_confidence:materiality" in d.reasons
+
+
+def test_a_clear_yes_no_answer_is_confident_enough() -> None:
+    # Jev answered 0.73 on real data: clear enough, and judged against its own looser threshold.
+    assert margin(0.73) == pytest.approx(0.46)
+    d = decide(CANDIDATE, ok(classification(change_material=0.73)), 85, 0.5)
+    assert not any(r.startswith("low_confidence") for r in d.reasons)
 
 
 def test_materiality_disagreement_requires_review() -> None:

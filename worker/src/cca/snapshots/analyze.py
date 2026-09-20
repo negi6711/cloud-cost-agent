@@ -90,6 +90,7 @@ def analyze(
     explainer: ExplanationProvider,
     low_confidence: float,
     concurrency: int = 4,
+    noul_margin: float = 0.3,
 ) -> Analysis:
     view = build_monthly_view(result)
     detection = detect(view, file_sha256)
@@ -115,7 +116,7 @@ def analyze(
     for rank, (candidate, packet, sha, outcome) in enumerate(
         zip(detection.candidates, packets, shas, outcomes, strict=True), start=1
     ):
-        decision = decide(candidate, outcome, ready.score, low_confidence)
+        decision = decide(candidate, outcome, ready.score, low_confidence, noul_margin)
         missing = _missing_order(candidate, outcome)
         card = explainer.explain(ExplanationInput(candidate, decision.final_category, result.currency, missing,
                                                   ownership_visible, total_change))

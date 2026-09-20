@@ -45,6 +45,8 @@ class Settings(BaseSettings):
     jev_max_retries: int = Field(2, alias="JEV_MAX_RETRIES", ge=0, le=5)
     jev_concurrency: int = Field(4, alias="JEV_CONCURRENCY", ge=1, le=8)
     jev_low_confidence_threshold: float = Field(0.5, alias="JEV_LOW_CONFIDENCE_THRESHOLD", ge=0, le=1)
+    # Yes/no (noul) answers carry no confidence: judged by |2p-1|, so 0.3 means "at least 65% one way".
+    jev_noul_margin_threshold: float = Field(0.3, alias="JEV_NOUL_MARGIN_THRESHOLD", ge=0, le=1)
 
     raw_file_retention_days: int = Field(30, alias="RAW_FILE_RETENTION_DAYS", ge=1, le=365)
     retention_interval_seconds: int = Field(3600, alias="RETENTION_INTERVAL_SECONDS", ge=60)

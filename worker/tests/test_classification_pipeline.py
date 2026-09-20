@@ -162,8 +162,10 @@ def test_cached_answers_are_tenant_scoped_and_reused(seed, owner, app_conn, stor
 
 def settings(**overrides: Any) -> Settings:
     base: dict[str, Any] = {"DATABASE_URL": "postgresql://x", "WORKER_SHARED_SECRET": "k" * 40,
-                            "STORAGE_DRIVER": "local", "LOCAL_STORAGE_DIR": Path.cwd().resolve()}
-    return Settings(**{**base, **overrides})
+                            "STORAGE_DRIVER": "local", "LOCAL_STORAGE_DIR": Path.cwd().resolve(),
+                            "TYPESAFE_API_KEY": None, "JEV_ENABLED": False, "JEV_PROVIDER": "mock"}
+    # _env_file=None so the developer's .env (which may hold a real key) cannot change the outcome.
+    return Settings(_env_file=None, **{**base, **overrides})
 
 
 def test_factory_checks_consent_first_then_enablement_then_configuration() -> None:

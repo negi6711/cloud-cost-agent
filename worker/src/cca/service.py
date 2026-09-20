@@ -96,6 +96,7 @@ def default_handlers(settings: Settings) -> dict[str, Handler]:
             providers=provider_factory(settings),
             low_confidence=settings.jev_low_confidence_threshold,
             concurrency=settings.jev_concurrency,
+            noul_margin=settings.jev_noul_margin_threshold,
         )
     }
 

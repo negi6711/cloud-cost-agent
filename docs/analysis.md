@@ -48,8 +48,10 @@ allocation 15. The canonical service-grouped export scores 85.
 1. The category is one of INVESTIGATE, REQUEST_EVIDENCE, MONITOR, ESCALATE (enum + DB CHECK).
 2. No classification → rule default, `JEV_UNAVAILABLE_REVIEW_REQUIRED`, review required, reason
    `classification_unavailable:<disabled|no_consent|…>`.
-3. Confidence below `JEV_LOW_CONFIDENCE_THRESHOLD` (default 0.5; yes/no answers use `|2p−1|`) →
-   `JEV_LOW_CONFIDENCE`, review required.
+3. Confidence below `JEV_LOW_CONFIDENCE_THRESHOLD` (default 0.5) → `JEV_LOW_CONFIDENCE`, review
+   required. Yes/no answers carry no confidence, so they are judged by `|2p−1|` against
+   `JEV_NOUL_MARGIN_THRESHOLD` (default 0.3, i.e. at least 65% one way) — tuned against real Jev
+   answers, which sat around 0.53-0.73 on the sample export.
 4. Model-requested review, or disagreement with rule materiality → review required.
 5. Readiness < 50 → REQUEST_EVIDENCE.
 6. New or unallocated spend → never MONITOR (REQUEST_EVIDENCE).

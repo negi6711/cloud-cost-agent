@@ -73,12 +73,14 @@ def make_handler(
     explainer: ExplanationProvider | None = None,
     low_confidence: float = 0.5,
     concurrency: int = 4,
+    noul_margin: float = 0.3,
 ) -> Callable[[Connection, Job], None]:
     provider_for = providers or _no_model
     explain = explainer or TemplateExplanationProvider()
 
     def handle(conn: Connection, job: Job) -> None:
-        process_snapshot(conn, job, store, max_bytes, today, provider_for, explain, low_confidence, concurrency)
+        process_snapshot(conn, job, store, max_bytes, today, provider_for, explain, low_confidence, concurrency,
+                         noul_margin)
 
     return handle
 
@@ -126,6 +128,7 @@ def process_snapshot(
     explainer: ExplanationProvider | None = None,
     low_confidence: float = 0.5,
     concurrency: int = 4,
+    noul_margin: float = 0.3,
 ) -> None:
     run_id = UUID(str(job.payload["snapshotRunId"]))
     with tenant_transaction(conn, job.tenant_id):
@@ -175,7 +178,7 @@ def process_snapshot(
         provider = CachingProvider(base, cache)
     explain = explainer or TemplateExplanationProvider()
     try:
-        analysis = analyze(result, run["sha256"], provider, explain, low_confidence, concurrency)
+        analysis = analyze(result, run["sha256"], provider, explain, low_confidence, concurrency, noul_margin)
     finally:
         close = getattr(base, "close", None)
         if callable(close):

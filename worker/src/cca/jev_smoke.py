@@ -36,7 +36,8 @@ def main() -> int:
                            timeout_s=settings.jev_timeout_ms / 1000, max_retries=settings.jev_max_retries)
     try:
         analysis = analyze(result, hashlib.sha256(data).hexdigest(), provider, TemplateExplanationProvider(),
-                           settings.jev_low_confidence_threshold, concurrency=2)
+                           settings.jev_low_confidence_threshold, concurrency=2,
+                           noul_margin=settings.jev_noul_margin_threshold)
     finally:
         provider.close()
 
