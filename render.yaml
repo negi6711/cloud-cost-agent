@@ -24,6 +24,9 @@ envVarGroups:
         sync: false
       - key: RAW_FILE_RETENTION_DAYS
         value: "30"
+      # An upload nobody claimed with an email goes sooner (ADR 0002).
+      - key: ANONYMOUS_FILE_RETENTION_DAYS
+        value: "7"
 
 services:
   - type: web
