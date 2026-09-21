@@ -20,7 +20,7 @@ from cca.parsers.model import ParseResult
 from cca.policy.gate import Decision, decide
 from cca.providers.base import ClassificationOutcome, DecisionModelProvider, ModelStatus
 from cca.snapshots.explain import Card, ExplanationInput, ExplanationProvider
-from cca.snapshots.packet import Aliases, RunContext, build_packet, packet_sha256
+from cca.snapshots.packet import PACKET_VERSION, Aliases, RunContext, build_packet, packet_sha256
 from cca.snapshots.readiness import Readiness, readiness
 from cca.snapshots.types import Candidate, MissingEvidence
 
@@ -91,6 +91,7 @@ def analyze(
     low_confidence: float,
     concurrency: int = 4,
     noul_margin: float = 0.3,
+    packet_version: str = PACKET_VERSION,
 ) -> Analysis:
     view = build_monthly_view(result)
     detection = detect(view, file_sha256, result.records)
@@ -106,7 +107,20 @@ def analyze(
         labels_by_dimension.setdefault(dimension, []).append(label)
     aliases = Aliases.for_labels(labels_by_dimension)
 
-    packets = [build_packet(c, ctx, aliases) for c in detection.candidates]
+    # Where this movement sits among the month's others: a model cannot judge "material" without it.
+    material_count = sum(1 for c in detection.candidates if c.material)
+    packets = [
+        build_packet(c, ctx, aliases, version=packet_version, peers={
+            "rank": rank,
+            "findings_this_month": len(detection.candidates),
+            "other_material_movements": material_count - (1 if c.material else 0),
+            "share_of_bill_increase": (
+                None if not total_change or total_change <= 0
+                else str(min(Decimal(1), c.delta / total_change).quantize(Decimal("0.0001")))
+            ),
+        })
+        for rank, c in enumerate(detection.candidates, start=1)
+    ]
     shas = [packet_sha256(p) for p in packets]
     # Jev evaluates each finding independently; calls run concurrently, results keep rank order.
     with ThreadPoolExecutor(max_workers=max(1, concurrency)) as pool:

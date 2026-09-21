@@ -24,9 +24,14 @@ from datetime import date
 from decimal import Decimal
 from typing import Any
 
-from cca.snapshots.types import Candidate, FindingKind
+from cca.snapshots.types import Candidate, Component, FindingKind, UsageSplit
 
+#: What production sends. v2 exists and is buildable, but measured no better (ADR 0004): it raised
+#: confidence only where the evidence already settled the question, and with the model advisory its
+#: extra customer-derived content buys no decision, so the minimal packet is the honest default.
 PACKET_VERSION = "ep/1"
+PACKET_V1 = "ep/1"
+PACKET_V2 = "ep/2"
 MAX_PACKET_LABEL = 80
 
 _ALIASED = {"account": "acct", "tag": "tag_value", "cost_category": "category_value", "other": "group"}
@@ -111,10 +116,66 @@ def _money(d: Decimal | None) -> str | None:
     return None if d is None else str(d.quantize(Decimal("0.01")))
 
 
-def build_packet(c: Candidate, ctx: RunContext, aliases: Aliases) -> dict[str, Any]:
-    label, withheld = safe_label(c.dimension, c.label, c.kind, aliases)
+#: Environment values are customer-authored ("acme-prod", "stg-2"), so the literal is not sent. The
+#: fact that matters is whether the spend is production, and that survives normalisation.
+_NON_PRODUCTION = ("stag", "dev", "test", "qa", "sandbox", "uat", "demo", "preview", "lab")
+
+
+def environment_class(label: str) -> str:
+    text = label.strip().lower()
+    if any(word in text for word in _NON_PRODUCTION):
+        return "non-production"
+    if "prod" in text:
+        return "production"
+    return "unknown"
+
+
+def _usage(split: UsageSplit) -> dict[str, Any]:
+    """Numbers and an AWS unit name: nothing here identifies a customer."""
     return {
-        "packet_version": PACKET_VERSION,
+        "unit": split.unit,
+        "quantity_baseline": None if split.quantity_baseline is None else str(split.quantity_baseline),
+        "quantity_current": None if split.quantity_current is None else str(split.quantity_current),
+        "quantity_change_ratio": None if split.quantity_change is None else str(split.quantity_change),
+        "rate_baseline": None if split.rate_baseline is None else str(split.rate_baseline),
+        "rate_current": None if split.rate_current is None else str(split.rate_current),
+        "volume_effect": _money(split.volume_effect),
+        "rate_effect": _money(split.rate_effect),
+        "mostly": split.dominant,
+    }
+
+
+def _composition(components: tuple[Component, ...], aliases: Aliases, kind: FindingKind) -> list[dict[str, Any]]:
+    """The same rows under the export's other groupings, aliased by the same rules as the label."""
+    out: list[dict[str, Any]] = []
+    for part in components:
+        if part.dimension == "environment":
+            value, withheld = environment_class(part.label), False
+        else:
+            value, withheld = safe_label(part.dimension, part.label, kind, aliases)
+        out.append({"grouping": part.dimension, "value": value, "value_withheld": withheld,
+                    "change": _money(part.delta), "share_of_this_change": str(part.share)})
+    return out
+
+
+def build_packet(
+    c: Candidate,
+    ctx: RunContext,
+    aliases: Aliases,
+    *,
+    version: str = PACKET_VERSION,
+    peers: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """The evidence one finding is judged on.
+
+    v2 adds what the export already contained and we used to discard: whether usage or the unit
+    price moved, whether the spend is production, what kind of charge it is, how the movement breaks
+    down by the other groupings, and where it ranks against the month's other movements. Resource
+    identifiers are deliberately never included (docs/security.md).
+    """
+    label, withheld = safe_label(c.dimension, c.label, c.kind, aliases)
+    packet = {
+        "packet_version": version,
         "context": {
             "billing_period": {"start": ctx.period_start.isoformat(), "end": ctx.period_end.isoformat()},
             "comparison": {"baseline_month": _month(ctx.baseline_month), "current_month": _month(ctx.current_month)},
@@ -143,6 +204,24 @@ def build_packet(c: Candidate, ctx: RunContext, aliases: Aliases) -> dict[str, A
             "monthly_history": [{"month": _month(m), "cost": _money(v)} for m, v in c.history],
         },
     }
+    if version != PACKET_V2:
+        return packet
+
+    finding = packet["finding"]
+    assert isinstance(finding, dict)
+    finding["grouping_names_an_owner"] = c.dimension in ("tag", "cost_category")
+    finding["usage"] = _usage(c.usage_split) if c.usage_split else None
+    finding["composition"] = _composition(c.components, aliases, c.kind)
+    environments = [p for p in c.components if p.dimension == "environment"]
+    finding["environment"] = (
+        {"class": environment_class(environments[0].label),
+         "share_of_this_change": str(environments[0].share)} if environments else None
+    )
+    charges = [p for p in c.components if p.dimension == "charge_type"]
+    finding["charge_type"] = charges[0].label.strip().lower()[:40] if charges else None
+    if peers:
+        finding["peer_context"] = peers
+    return packet
 
 
 def canonical_json(packet: dict[str, Any]) -> bytes:
