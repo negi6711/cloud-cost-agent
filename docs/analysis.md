@@ -25,6 +25,7 @@ user.
 | Severity | high ≥ 3× absolute threshold; medium ≥ 1×; else low |
 | Findings | at most 10, all from the grouping the export is built around (its primary dimension) |
 | Components | up to 3 per finding, one per other grouping, each explaining ≥ 15% of the movement |
+| Usage split | volume vs rate effect per finding, when every row carries a quantity; ≥ 70% of the effect one way decides "more usage" or "a higher price" |
 
 ### What each finding is short of
 
@@ -36,6 +37,7 @@ fixed per finding kind:
 | has no team tag or cost category | allocation tags — nobody can be asked who owns this yet |
 | has tags, and one team covers ≥ 90% of the movement | nothing about ownership; the file already names them |
 | has tags, and the movement spans teams | owner confirmation |
+| shows flat usage at a higher unit price | Savings Plan or Reserved Instance coverage — utilization cannot explain a price move |
 | has a usage-type or instance-type breakdown | CloudWatch utilization for the affected resources |
 | has neither | resource-level billing (a Cost and Usage Report) |
 

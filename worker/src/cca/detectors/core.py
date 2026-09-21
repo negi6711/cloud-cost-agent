@@ -24,6 +24,7 @@ from cca.snapshots.types import (
     FindingKind,
     MissingEvidence,
     Severity,
+    UsageSplit,
 )
 
 HISTORY_MONTHS = 6
@@ -35,6 +36,7 @@ MAX_COMPONENTS = 3
 OWNER_KNOWN_SHARE = Decimal("0.9")
 MAX_MISSING_EVIDENCE = 3
 _CENT = Decimal("0.01")
+_RATE = Decimal("0.000001")  # a unit price needs more than cents: $0.04048 per vCPU-hour
 _PCT = Decimal("0.0001")
 
 _MISSING: dict[FindingKind, tuple[MissingEvidence, ...]] = {
@@ -210,12 +212,61 @@ def _with_components(
             if dimension not in best or delta > best[dimension].delta:
                 best[dimension] = Component(dimension, label, delta, share)
         components = sorted(best.values(), key=lambda c: -c.delta)[:MAX_COMPONENTS]
+        split = _usage_split(rows, baseline_month, current_month)
         out.append(replace(
             candidate,
             components=tuple(components),
-            missing_evidence=_missing_for(candidate.kind, tuple(components), available),
+            usage_split=split,
+            missing_evidence=_missing_for(candidate.kind, tuple(components), available, split),
         ))
     return out
+
+
+def _usage_split(
+    rows: Sequence[CostRecord],
+    baseline_month: date,
+    current_month: date,
+) -> UsageSplit | None:
+    """Was this more usage, or the same usage at a different price?
+
+    Every row must report a quantity, because a movement is only explained if all of its money is.
+    Quantities are then compared *within* each unit — adding GB-months to requests would produce a
+    confident, meaningless number — and the resulting effects, which are money, are summed.
+
+    A unit that appears in only one month is new or retired usage, so all of its cost counts as
+    volume: there is no earlier rate to have changed.
+    """
+    if not rows or any(r.quantity is None or not r.unit for r in rows):
+        return None
+
+    by_unit: dict[str, dict[date, list[Decimal]]] = defaultdict(
+        lambda: {baseline_month: [Decimal(0), Decimal(0)], current_month: [Decimal(0), Decimal(0)]})
+    for r in rows:
+        month = r.period_start.replace(day=1)
+        if month in (baseline_month, current_month):
+            bucket = by_unit[r.unit or ""][month]
+            bucket[0] += r.quantity or Decimal(0)
+            bucket[1] += r.cost
+
+    volume = rate = Decimal(0)
+    detail: list[tuple[str, Decimal, Decimal, Decimal, Decimal, Decimal]] = []
+    for unit, months in by_unit.items():
+        (qty_b, cost_b), (qty_c, cost_c) = months[baseline_month], months[current_month]
+        if qty_b <= 0 or qty_c <= 0:
+            volume += cost_c - cost_b  # new or retired usage: all of it is volume
+            continue
+        rate_b, rate_c = cost_b / qty_b, cost_c / qty_c
+        volume += (qty_c - qty_b) * rate_b
+        rate += (rate_c - rate_b) * qty_c
+        detail.append((unit, qty_b, qty_c, rate_b, rate_c, cost_c))
+
+    split = UsageSplit(volume_effect=volume.quantize(_CENT), rate_effect=rate.quantize(_CENT))
+    if len(by_unit) == 1 and len(detail) == 1:
+        unit, qty_b, qty_c, rate_b, rate_c, _ = detail[0]
+        return replace(split, unit=unit, quantity_baseline=qty_b.quantize(_CENT),
+                       quantity_current=qty_c.quantize(_CENT),
+                       rate_baseline=rate_b.quantize(_RATE), rate_current=rate_c.quantize(_RATE))
+    return split
 
 
 #: A grouping that names a team. An account number does not: it is where the spend sits, not who
@@ -229,6 +280,7 @@ def _missing_for(
     kind: FindingKind,
     components: tuple[Component, ...],
     available: set[str],
+    split: UsageSplit | None = None,
 ) -> tuple[MissingEvidence, ...]:
     """What this finding is actually short of, given what the export turned out to contain.
 
@@ -249,6 +301,10 @@ def _missing_for(
 
     if kind is FindingKind.NEW_SERVICE:
         missing.append(MissingEvidence.ENVIRONMENT_CLASSIFICATION)
+    elif split is not None and split.dominant == "rate":
+        # Usage did not move, so utilization cannot explain this. A unit price that changed on flat
+        # usage is a commitment, pricing or mix event.
+        missing.append(MissingEvidence.COMMITMENT_COVERAGE)
     elif any(d in available for d in _SHOWS_CAPACITY):
         missing.append(MissingEvidence.UTILIZATION_METRICS)
     else:

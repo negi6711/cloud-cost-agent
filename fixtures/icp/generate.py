@@ -244,13 +244,19 @@ SCENARIOS: tuple[Scenario, ...] = (
         name="08_gpu_hours_growth_cur",
         layout="cur", months=("2026-05-01", "2026-06-01"), effect="volume",
         watch="Amazon Elastic Compute Cloud - Compute",
-        story="Inference demand grew: GPU instance-hours up 85% at the on-demand rate. Pairs with "
-              "09, where the hours are flat and only the rate moves.",
+        story="Inference demand grew: GPU instance-hours up 85% at the on-demand rate, and most of "
+              "the growth is in staging rather than production. Pairs with 09, where the hours are "
+              "flat and only the rate moves.",
         lines=(
             Line(service="Amazon Elastic Compute Cloud - Compute", usage_type="BoxUsage:g5.12xlarge",
-                 unit="Hrs", rate=RATE["g5_12xlarge_hour"], qty=Decimal("1460"),
-                 qty_factors=("1", "1.85"), team="ml-platform", environment="production",
+                 unit="Hrs", rate=RATE["g5_12xlarge_hour"], qty=Decimal("1100"),
+                 qty_factors=("1", "1.22"), team="ml-platform", environment="production",
                  resource="asg/inference"),
+            # Most of the growth is in staging, which is the fact that decides who reads this.
+            Line(service="Amazon Elastic Compute Cloud - Compute", usage_type="BoxUsage:g5.12xlarge",
+                 unit="Hrs", rate=RATE["g5_12xlarge_hour"], qty=Decimal("360"),
+                 qty_factors=("1", "3.80"), team="ml-platform", environment="staging",
+                 resource="asg/inference-staging"),
             Line(service="Amazon Elastic Block Store", usage_type="USE1-EBS:VolumeUsage.gp3",
                  unit="GB-Mo", rate=RATE["ebs_gp3_gb_month"], qty=Decimal("18000"),
                  qty_factors=("1", "1.40"), team="ml-platform", operation="CreateVolume",

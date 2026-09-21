@@ -1,6 +1,6 @@
 # Billing export parser (`worker/src/cca/parsers`)
 
-Parser version: `ce-csv/2` (bump in `worker/src/cca/versions.py` and `packages/config/src/index.ts`
+Parser version: `ce-csv/3` (bump in `worker/src/cca/versions.py` and `packages/config/src/index.ts`
 together whenever output changes).
 
 ## Accepted input
@@ -11,12 +11,26 @@ together whenever output changes).
 | Delimiter | `,` `;` tab `\|`, detected from the first 50 lines |
 | Limits | ≤ 25 MB, ≤ 1,000,000 lines, ≤ 1,000 columns, ≤ 10,000 chars per field |
 | Layout: Cost Explorer (wide) | First header cell = group-by dimension (`Service`, `Linked account`, `Region`, `Usage type`, `Tag: …`, …); other headers = group values with a currency marker such as `($)`; optional `Total costs($)` column and `<Dimension> total` row; one row per period |
-| Layout: long | Header aliases for date, period end, cost, service, account, region, usage type, ownership tag, currency and a partial-period flag. Headers are matched after camelCase is split, so `TimePeriodStart`, `UnblendedCost` and `LinkedAccountName` read the same as `Time period start`, `Unblended cost` and `Linked account name`; slash-qualified CUR names (`lineItem/UnblendedCost`) match whole |
+| Layout: long | Header aliases for date, period end, cost, service, account, region, usage type, ownership tag, environment, charge type, usage quantity, usage unit, currency and a partial-period flag. Headers are matched after camelCase is split, so `TimePeriodStart`, `UnblendedCost` and `LinkedAccountName` read the same as `Time period start`, `Unblended cost` and `Linked account name`; slash-qualified CUR names (`lineItem/UnblendedCost`) match whole |
 | Dates | `YYYY-MM-DD`, `YYYY-MM`, ISO with time; `M/D/YYYY` or `D/M/YYYY` decided from the whole column (all-ambiguous → month/day with a warning) |
 | Money | `Decimal` only. `1,234.56`, `$12`, `-$3`, `(4.00)` (negative), exponents. Semicolon files read `1234,56` as a decimal comma |
 
 A Cost Explorer CSV holds **one** group-by dimension. Account or region changes are available only
 when the file is grouped that way or is a long export with those columns.
+
+### Usage quantity is not a dimension
+
+`UsageQuantity` and `UsageUnit` are carried on `CostRecord` beside the cost, never as a grouping:
+quantity is only additive within one unit, and grouping by a number is meaningless. They exist so a
+finding can answer the one question a bill can settle on its own — **more usage, or a higher price?**
+— computed per unit and summed as money (`UsageSplit`, `detectors/core.py`). A unit that appears in
+only one month is new or retired usage, so all of its cost counts as volume.
+
+A **Cost Explorer export has no quantities at all**: the console exports one metric at a time, so a
+cost export cannot answer that question and the report does not pretend otherwise.
+
+An unreadable quantity on an otherwise valid row keeps the money and drops the usage, because a
+guessed number here would decide "usage or price" wrongly.
 
 ### Reading a long export well
 

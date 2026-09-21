@@ -120,7 +120,7 @@ describe("upload → snapshot flow", () => {
     const [run] = await owner("SELECT status, consent_basis, unlocked_at, parser_version FROM snapshot_run WHERE id = $1", [
       snapshotRunId,
     ]);
-    expect(run).toEqual({ status: "queued", consent_basis: "pending", unlocked_at: null, parser_version: "ce-csv/2" });
+    expect(run).toEqual({ status: "queued", consent_basis: "pending", unlocked_at: null, parser_version: "ce-csv/3" });
 
     const statusRes = await getStatus(
       new Request(`http://localhost/api/snapshots/${snapshotRunId}`, { headers: { cookie: visitor.cookie } }),

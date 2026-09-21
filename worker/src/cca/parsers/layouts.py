@@ -22,6 +22,7 @@ from cca.parsers.values import (
     is_unallocated_label,
     parse_cost,
     parse_date,
+    parse_quantity,
     split_header_currency,
 )
 
@@ -62,11 +63,27 @@ _LONG_ALIASES: dict[str, tuple[str, ...]] = {
     # An ownership tag, if the export carries one: this is what lets a finding name a team.
     "tag": ("team", "owner", "cost center", "business unit", "resource tags user team",
             "resourcetags/user:team", "resourcetags/user:owner", "resourcetags/user:costcenter"),
+    # Production or not. A bill cannot show whether spend is safe to touch, but it can show that the
+    # movement is in staging, which changes who reads the finding and how fast.
+    "environment": ("environment", "env", "stage", "resource tags user environment",
+                    "resourcetags/user:environment", "resourcetags/user:env"),
+    # Usage, Tax, Credit, Refund, RIFee, SavingsPlanCoveredUsage... "is this even actionable spend".
+    "charge_type": ("charge type", "line item type", "record type",
+                    "lineitem/lineitemtype", "line_item_line_item_type"),
+    # How much was used, and of what. Not dimensions: see CostRecord.quantity.
+    "usage_quantity": ("usage quantity", "usage amount", "quantity",
+                       "lineitem/usageamount", "line_item_usage_amount"),
+    "usage_unit": ("usage unit", "pricing unit", "lineitem/usageunit", "line_item_usage_unit",
+                   "pricing/unit"),
     "currency": ("currency", "currency code", "lineitem/currencycode", "line_item_currency_code"),
     # AWS marks a row that covers only part of its period; we trust it over our own date arithmetic.
     "partial": ("is partial period", "ispartialperiod", "partial period", "partial"),
 }
-_LONG_DIMENSIONS = ("service", "account", "region", "usage_type", "tag")
+_LONG_DIMENSIONS = ("service", "account", "region", "usage_type", "tag", "environment", "charge_type")
+
+#: Groupings that can say who owns spend. A blank region or usage type is untidy; a blank team is an
+#: allocation gap, and only the second one belongs in "this spend has no owner".
+UNALLOCATED_DIMENSIONS = ("tag", "cost_category", "account")
 
 
 _CAMEL = re.compile(r"(?<=[a-z0-9])(?=[A-Z])|(?<=[A-Z])(?=[A-Z][a-z])")
@@ -229,8 +246,9 @@ def normalize_wide(rows: list[tuple[int, list[str]]], *, decimal_comma: bool) ->
                 continue
             line_sum += value
             column_sums[col] = column_sums.get(col, Decimal(0)) + value
+            unallocated = dimension in UNALLOCATED_DIMENSIONS and is_unallocated_label(label)
             records.append(CostRecord(period, ((dimension, label),), value, col_currency,
-                                      line, col + 1, is_unallocated_label(label)))
+                                      line, col + 1, unallocated))
         if total_col is not None:
             status, stated = parse_cost(fields[total_col], decimal_comma=decimal_comma)
             if stated is not None and abs(stated - line_sum) > RECONCILE_TOLERANCE:
@@ -322,6 +340,17 @@ def normalize_long(rows: list[tuple[int, list[str]]], *, decimal_comma: bool) ->
                                         cols["cost"] + 1))
             continue
         dimensions = tuple((d, clean_label(fields[c]) or "(blank)") for d, c in dim_columns)
+        quantity = unit = None
+        if "usage_quantity" in cols:
+            q_status, q_value = parse_quantity(fields[cols["usage_quantity"]], decimal_comma=decimal_comma)
+            if q_status is CellStatus.OK:
+                quantity = q_value
+                unit = clean_label(fields[cols["usage_unit"]]) if "usage_unit" in cols else None
+            elif q_status is not CellStatus.EMPTY:
+                # A cost row with an unreadable quantity is still a cost row: keep the money, drop
+                # the usage, and never guess a number that decides "usage or price".
+                stats.cells_rejected += 1
+                rejections.append(Rejection(line, "invalid_number", cols["usage_quantity"] + 1))
         currency = clean_label(fields[cols["currency"]]).upper() if "currency" in cols else header_currency
         if currency:
             currencies.add(currency)
@@ -329,9 +358,11 @@ def normalize_long(rows: list[tuple[int, list[str]]], *, decimal_comma: bool) ->
         if key in keys and keys[key] != value:
             conflicting += 1
         keys[key] = value
-        unallocated = any(is_unallocated_label(v) or v == "(blank)" for _, v in dimensions)
+        unallocated = any(d in UNALLOCATED_DIMENSIONS and (is_unallocated_label(v) or v == "(blank)")
+                          for d, v in dimensions)
         stats.lines_accepted += 1
-        records.append(CostRecord(period, dimensions, value, currency, line, None, unallocated))
+        records.append(CostRecord(period, dimensions, value, currency, line, None, unallocated,
+                                  quantity, unit))
 
         # How far this month's data reaches, so a truncated month is not compared as a whole one.
         month = period.replace(day=1)

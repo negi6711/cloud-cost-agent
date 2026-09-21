@@ -9,6 +9,8 @@ from enum import StrEnum
 from functools import lru_cache
 
 MAX_ABS_COST = Decimal("1e12")
+# Byte-hours are enormous and perfectly normal, so a quantity gets far more headroom than money.
+MAX_ABS_QUANTITY = Decimal("1e21")
 MAX_LABEL_CHARS = 200
 
 _PLAIN_NUMBER = re.compile(r"^[-+]?(\d+(\.\d*)?|\.\d+)([eE][-+]?\d+)?$")
@@ -58,6 +60,32 @@ def parse_cost(raw: str, *, decimal_comma: bool = False) -> tuple[CellStatus, De
             return CellStatus.INVALID, None  # "(-5)" is not a number anyone meant
         value = -value
     if abs(value) > MAX_ABS_COST:
+        return CellStatus.OUT_OF_RANGE, None
+    return CellStatus.OK, value
+
+
+def parse_quantity(raw: str, *, decimal_comma: bool = False) -> tuple[CellStatus, Decimal | None]:
+    """Parse a usage-quantity cell (hours, GB-months, requests).
+
+    Deliberately not `parse_cost`: a quantity carries no currency symbol, "(5)" is not a negative
+    five of anything, and the money ceiling would reject ordinary byte-hour figures.
+    """
+    s = raw.strip()
+    if not s:
+        return CellStatus.EMPTY, None
+    if decimal_comma and _DECIMAL_COMMA.match(s):
+        s = s.replace(",", ".")
+    elif _GROUPED_NUMBER.match(s):
+        s = s.replace(",", "")
+    if not _PLAIN_NUMBER.match(s):
+        return CellStatus.INVALID, None
+    try:
+        value = Decimal(s)
+    except InvalidOperation:
+        return CellStatus.INVALID, None
+    if not value.is_finite():
+        return CellStatus.INVALID, None
+    if abs(value) > MAX_ABS_QUANTITY:
         return CellStatus.OUT_OF_RANGE, None
     return CellStatus.OK, value
 

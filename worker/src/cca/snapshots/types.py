@@ -25,6 +25,51 @@ class Component:
     share: Decimal  # of the parent finding's delta
 
 
+@dataclass(frozen=True)
+class UsageSplit:
+    """How much of a movement was more usage, and how much was a changed unit price.
+
+    The only question a bill can settle on its own, and the one that decides who the reader should
+    talk to: flat hours at a higher rate is a commitment or pricing event, not a deployment.
+
+    Computed only when every row behind the finding reports a quantity in the same unit, because a
+    quantity is meaningless across units (you cannot add GB-months to requests).
+
+        delta_cost = volume_effect + rate_effect
+        volume_effect = (qty_current - qty_baseline) * rate_baseline
+        rate_effect   = (rate_current - rate_baseline) * qty_current
+    """
+
+    volume_effect: Decimal
+    rate_effect: Decimal
+    #: Quantities are only comparable within one unit, so a service billed in both vCPU-hours and
+    #: GB-hours still gets effects (money is money) but no single usage figure to quote.
+    unit: str | None = None
+    quantity_baseline: Decimal | None = None
+    quantity_current: Decimal | None = None
+    rate_baseline: Decimal | None = None
+    rate_current: Decimal | None = None
+
+    @property
+    def dominant(self) -> str:
+        """"volume", "rate", or "mixed" when neither explains most of the movement."""
+        total = abs(self.volume_effect) + abs(self.rate_effect)
+        if total == 0:
+            return "mixed"
+        share = abs(self.volume_effect) / total
+        if share >= Decimal("0.70"):
+            return "volume"
+        if share <= Decimal("0.30"):
+            return "rate"
+        return "mixed"
+
+    @property
+    def quantity_change(self) -> Decimal | None:
+        if not self.quantity_baseline or self.quantity_current is None:
+            return None
+        return (self.quantity_current / self.quantity_baseline - 1).quantize(Decimal("0.0001"))
+
+
 class Category(StrEnum):
     INVESTIGATE = "INVESTIGATE"
     REQUEST_EVIDENCE = "REQUEST_EVIDENCE"
@@ -113,6 +158,9 @@ class Candidate:
     #: What this movement is made of, seen through the other groupings in the same export. These are
     #: slices of the same rows, so they are evidence inside one finding, never findings of their own.
     components: tuple[Component, ...] = ()
+    #: Whether the money moved because of more usage or a changed price. None when the export has no
+    #: usage column (every Cost Explorer export) or mixes units within the finding.
+    usage_split: UsageSplit | None = None
 
     @property
     def material(self) -> bool:

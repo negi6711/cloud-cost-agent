@@ -11,7 +11,7 @@ import pytest
 from cca.parsers import parse_billing_export
 from cca.providers.base import UnavailableProvider, UnavailableReason
 from cca.settings import REPO_ROOT
-from cca.snapshots.analyze import Analysis, analyze
+from cca.snapshots.analyze import Analysis, AnalyzedFinding, analyze
 from cca.snapshots.explain import TemplateExplanationProvider
 from cca.snapshots.packet import canonical_json, packet_sha256
 from cca.snapshots.types import Category, FindingKind, MissingEvidence, Severity
@@ -292,3 +292,64 @@ def test_an_export_without_tags_is_asked_for_allocation_not_utilization_first() 
     for f in a.findings:
         assert MissingEvidence.ALLOCATION_TAGS in f.card.missing
         assert MissingEvidence.UTILIZATION_METRICS not in f.card.missing
+
+
+# ------------------------------------------------- usage against unit price ---
+# These read the ICP corpus (fixtures/icp), whose scenarios are defined by which factor moved.
+
+
+def ec2_finding(name: str) -> AnalyzedFinding:
+    a = fixture(f"icp/{name}")
+    return next(f for f in a.findings if f.candidate.label.startswith("Amazon Elastic Compute"))
+
+
+def test_a_rate_change_is_named_as_one_and_asks_about_commitments() -> None:
+    """The Savings Plan lapse: hours flat, unit price up. Telling this reader to collect utilization
+    sends them looking for a deployment that never happened."""
+    f = ec2_finding("03_savings_plan_lapse_cur.csv")
+    split = f.candidate.usage_split
+    assert split is not None and split.dominant == "rate"
+    assert split.volume_effect + split.rate_effect == f.candidate.delta
+    assert split.quantity_change is not None and abs(split.quantity_change) < Decimal("0.02")
+    assert split.rate_current is not None and split.rate_baseline is not None
+    assert split.rate_current > split.rate_baseline
+
+    assert f.card.missing[0] is MissingEvidence.COMMITMENT_COVERAGE
+    assert MissingEvidence.UTILIZATION_METRICS not in f.card.missing[:1]
+    assert "price, not more usage" in " ".join(s.text for s in f.card.what_we_know)
+    assert "commitment coverage" in f.card.next_action
+
+
+def test_a_volume_change_is_named_as_one() -> None:
+    f = ec2_finding("08_gpu_hours_growth_cur.csv")
+    split = f.candidate.usage_split
+    assert split is not None and split.dominant == "volume"
+    assert split.volume_effect + split.rate_effect == f.candidate.delta
+    assert MissingEvidence.COMMITMENT_COVERAGE not in f.card.missing
+    assert "more usage" in " ".join(s.text for s in f.card.what_we_know)
+
+
+def test_quantities_in_different_units_are_never_added() -> None:
+    """Fargate bills vCPU-hours and GB-hours. The money is still comparable; the usage is not."""
+    a = fixture("icp/02_fargate_volume_surge_cur.csv")
+    f = next(x for x in a.findings if "Container" in x.candidate.label)
+    split = f.candidate.usage_split
+    assert split is not None and split.unit is None and split.quantity_baseline is None
+    assert split.dominant == "volume"
+    assert "billed in more than one unit" in " ".join(s.text for s in f.card.what_we_know)
+
+
+def test_a_cost_explorer_export_gets_no_split_because_it_has_no_quantities() -> None:
+    """One metric per export is a Cost Explorer limitation, not a parser gap: we must not guess."""
+    a = fixture("icp/16a_paired_cost_ce.csv")
+    assert a.findings
+    for f in a.findings:
+        assert f.candidate.usage_split is None
+        text = " ".join(s.text for s in f.card.what_we_know)
+        assert "usage" not in text.lower() or "more usage" not in text.lower()
+
+
+def test_environment_narrows_a_finding_when_the_export_carries_it() -> None:
+    f = ec2_finding("08_gpu_hours_growth_cur.csv")
+    environments = {c.label: c.share for c in f.candidate.components if c.dimension == "environment"}
+    assert "staging" in environments and environments["staging"] > Decimal("0.5")

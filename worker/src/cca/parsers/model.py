@@ -66,6 +66,11 @@ class CostRecord:
     line: int
     column: int | None = None
     unallocated: bool = False
+    #: How much was used, and of what. Never a dimension: quantity is only additive within one unit,
+    #: and grouping by it would be meaningless. None when the export carries no usage column, which
+    #: is every Cost Explorer export (the console exports one metric at a time).
+    quantity: Decimal | None = None
+    unit: str | None = None
 
     def dimension(self, name: str) -> str | None:
         for key, value in self.dimensions:

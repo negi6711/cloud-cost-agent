@@ -18,6 +18,7 @@ from cca.snapshots.types import (
     Category,
     FindingKind,
     MissingEvidence,
+    UsageSplit,
 )
 
 _SYMBOLS = {"USD": "$", "EUR": "€", "GBP": "£"}
@@ -104,11 +105,67 @@ def _refs_text(refs: tuple[str, ...]) -> str:
     return f"{shown} and {len(refs) - 4} more" if len(refs) > 4 else shown
 
 
+#: AWS writes units for machines. "$1.54 per Hrs" is not a sentence.
+_UNIT_NAMES = {
+    "hrs": "hour", "hours": "hour", "hour": "hour",
+    "vcpu-hours": "vCPU-hour", "gb-hours": "GB-hour", "dpu-hours": "DPU-hour",
+    "gb-mo": "GB-month", "gb-month": "GB-month", "gb-months": "GB-month",
+    "requests": "request", "each": "unit", "quantity": "unit", "count": "unit",
+}
+
+
+def unit_name(unit: str) -> str:
+    return _UNIT_NAMES.get(unit.strip().lower(), unit)
+
+
+def quantity(amount: Decimal, unit: str) -> str:
+    whole = amount.quantize(Decimal("1")) if amount == amount.to_integral_value() else amount
+    return f"{whole:,} {unit_name(unit)}s" if whole != 1 else f"1 {unit_name(unit)}"
+
+
+def unit_rate(amount: Decimal, currency: str | None, unit: str) -> str:
+    """A unit price needs more than two decimals: $0.04 per vCPU-hour hides the whole story."""
+    trimmed = amount.quantize(Decimal("0.000001")).normalize()
+    exponent = trimmed.as_tuple().exponent
+    if isinstance(exponent, int) and exponent > 0:  # normalize() turns 100 into 1E+2
+        trimmed = trimmed.quantize(Decimal("0.01"))
+    return f"{money(trimmed, currency)} per {unit_name(unit)}"
+
+
+def usage_statement(split: UsageSplit, currency: str | None) -> Statement:
+    """The one thing a bill can settle by itself: was it more usage, or a different price?"""
+    priced = money(split.rate_effect, currency)
+    used = money(split.volume_effect, currency)
+
+    if not (split.unit and split.quantity_baseline is not None and split.quantity_current is not None
+            and split.rate_baseline is not None and split.rate_current is not None):
+        # Billed in several units, so the quantities cannot be added, but the money still can.
+        lead = "This service is billed in more than one unit, so only the money is comparable:"
+        if split.dominant == "rate":
+            return Statement(f"{lead} {priced} of this change is a higher price, not more usage.")
+        if split.dominant == "volume":
+            return Statement(f"{lead} {used} of this change is more usage, at an unchanged rate.")
+        return Statement(f"{lead} {used} of it is more usage and {priced} is a higher price.")
+
+    moved = "" if split.quantity_change is None else f", {percent(split.quantity_change)}"
+    usage = (f"Usage went from {quantity(split.quantity_baseline, split.unit)} to "
+             f"{quantity(split.quantity_current, split.unit)}{moved}")
+    rates = (f"the effective rate went from {unit_rate(split.rate_baseline, currency, split.unit)} "
+             f"to {unit_rate(split.rate_current, currency, split.unit)}")
+    if split.dominant == "rate":
+        return Statement(f"{usage}. Usage barely moved and {rates}: {priced} of this change is "
+                         "price, not more usage.")
+    if split.dominant == "volume":
+        return Statement(f"{usage}, at an effectively unchanged rate: {used} of this change is more usage.")
+    return Statement(f"{usage}, and {rates}: {used} of the change is usage and {priced} is price.")
+
+
 def next_action(
     category: Category,
     missing: tuple[MissingEvidence, ...],
     month: date,
     owner: str | None = None,
+    split: UsageSplit | None = None,
 ) -> str:
     """Safest next step for the decided category. Never a resize, delete, stop or purchase.
 
@@ -130,8 +187,18 @@ def next_action(
         return f"Confirm which team owns this spend{collect} before considering a cost change."
     if category is Category.INVESTIGATE:
         who = owner or "the owning team"
+        if split is not None and split.dominant == "rate":
+            # "Ask what changed" sends someone to look for a deployment that did not happen.
+            return (f"Usage did not move, so ask {who} what changed about price rather than about "
+                    "workload: an expired Savings Plan or Reserved Instance, a shift off spot "
+                    "capacity, or a region or instance-family change.")
         return f"Ask {who} what changed in {month_name(month)}{collect} before deciding anything."
     if category is Category.ESCALATE:
+        if split is not None and split.dominant == "rate":
+            who = f" with {owner}" if owner else ""
+            return ("Large relative to the whole bill, so raise it in this month's cost review. "
+                    f"Usage did not move, so check pricing and commitment coverage{who} first, "
+                    "not the workload.")
         cause = f"confirm the cause with {owner}" if owner else "confirm who owns it and what caused it"
         return ("Large relative to the whole bill, so raise it in this month's cost review rather "
                 f"than leaving it for next month: {cause} before any cost change.")
@@ -177,6 +244,8 @@ class TemplateExplanationProvider:
                 share = min(Decimal(1), c.delta / data.total_change)
                 know.append(Statement(f"It accounts for {percent(share)} of the whole bill's increase between "
                                       f"those months."))
+            if c.usage_split is not None:
+                know.append(usage_statement(c.usage_split, cur))
             for part in c.components:
                 # The same rows seen through another grouping, so this narrows the movement down
                 # rather than adding to it.
@@ -195,6 +264,7 @@ class TemplateExplanationProvider:
             what_changed=what,
             what_we_know=tuple(know),
             missing=data.missing,
-            next_action=next_action(data.final_category, data.missing, c.current_month, owner_from_tags(c)),
+            next_action=next_action(data.final_category, data.missing, c.current_month,
+                                    owner_from_tags(c), c.usage_split),
             source=self.name,
         )
