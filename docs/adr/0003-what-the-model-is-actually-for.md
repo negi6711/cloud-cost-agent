@@ -89,6 +89,31 @@ twice. The rules now decide the order from what the export contains, and the mod
 appended only when it names a gap the rules missed. It is still recorded on every finding, so a
 version that starts discriminating will be visible in the data.
 
+## Decision 3 (implemented 2026-09-21): the rules publish the category
+
+Reading a real report, the founder found three statements that could not all be true: the card said
+INVESTIGATE, the banner said "our rules made the final call", and the card said the rules alone would
+have said ESCALATE. The code agreed with the complaint. In `gate.py`, a successful classification
+supplied the category, and the three rule overrides could only fire against a MONITOR answer or thin
+data — and this model never answers MONITOR, which is why it overrode nothing in 58 findings.
+
+`candidate.default_category` is now the published category, always. The model's answer is stored in
+`jev_category`, can still require human review, and is shown on the card beside the decision —
+"Our rules decided X. Jev suggested Y (n% confidence). Recorded for comparison; it does not change
+the decision." `POLICY_BLOCKED` now means exactly that disagreement, which makes the agreement rate
+a queryable number per model version rather than a thing we have to re-measure with a script.
+
+Two consequences, both accepted:
+
+* Two gate rules became unreachable and were deleted, because they existed to bound a model answer.
+  They come back if a model is ever given authority again.
+* ESCALATE is now whatever our rule says, and on the ICP corpus that is 7 of 15 findings. Each one
+  is the top finding in its file and accounts for 72–99.8% of that bill's whole increase, so the
+  rate looks like a property of a corpus where every file has one dominant anomaly rather than a
+  mis-set threshold. The action wording was softened from "raise this with engineering leadership"
+  to "raise it in this month's cost review". The rate is worth re-measuring on real exports before
+  anyone touches the threshold.
+
 ## Consequences
 
 * One extra text column per finding, and one more thing the unlock phase must write.

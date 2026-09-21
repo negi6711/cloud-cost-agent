@@ -310,7 +310,11 @@ def _increase_candidate(
         if not (material_absolute or material_relative):
             return None
         kind = FindingKind.MATERIAL_INCREASE
-        share = _share(row.current, current_total)
+        # ESCALATE means "large relative to the whole bill", so it has to measure the *change*
+        # against the bill. It used to measure the service's own share of the month, which any
+        # dominant service passes whatever it did: a flat EC2 line that happens to be 60% of the
+        # bill was one 3x-threshold move away from "raise this now".
+        share = _share(row.delta, current_total)
         if material_absolute and row.delta >= t.material_absolute * HIGH_SEVERITY_MULTIPLE and share >= Decimal("0.10"):
             default = Category.ESCALATE
         elif material_absolute:

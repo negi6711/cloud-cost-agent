@@ -65,7 +65,7 @@ the bill's increase summed past 100%.
 |---|---|
 | `new_service` | REQUEST_EVIDENCE |
 | `unallocated_spend` | REQUEST_EVIDENCE |
-| `material_increase`, absolute, high severity and ≥ 10% of the month | ESCALATE |
+| `material_increase`, absolute, ≥ 3× the absolute threshold and the **change** is ≥ 10% of the month | ESCALATE |
 | `material_increase`, absolute | INVESTIGATE |
 | `material_increase`, relative only | MONITOR |
 
@@ -79,19 +79,26 @@ allocation 15. The canonical service-grouped export scores 85.
 
 ## Policy gate (`policy/gate.py`)
 
-1. The category is one of INVESTIGATE, REQUEST_EVIDENCE, MONITOR, ESCALATE (enum + DB CHECK).
-2. No classification → rule default, `JEV_UNAVAILABLE_REVIEW_REQUIRED`, review required, reason
-   `classification_unavailable:<disabled|no_consent|…>`.
-3. Confidence below `JEV_LOW_CONFIDENCE_THRESHOLD` (default 0.5) → `JEV_LOW_CONFIDENCE`, review
-   required. Yes/no answers carry no confidence, so they are judged by `|2p−1|` against
-   `JEV_NOUL_MARGIN_THRESHOLD` (default 0.3, i.e. at least 65% one way) — tuned against real Jev
-   answers, which sat around 0.53-0.73 on the sample export.
-4. Model-requested review, or disagreement with rule materiality → review required.
-5. Readiness < 50 → REQUEST_EVIDENCE.
-6. New or unallocated spend → never MONITOR (REQUEST_EVIDENCE).
-7. High-severity material change → never MONITOR (INVESTIGATE).
+**The rules decide the category. A model answer is a second opinion recorded beside the decision,
+never the decision** (ADR 0003 has the measurement that prompted this).
 
-Rules 5–7 overriding a model answer set `POLICY_BLOCKED`; the model's answer stays in `jev_category`.
+1. The published category is the deterministic default for the finding, one of INVESTIGATE,
+   REQUEST_EVIDENCE, MONITOR, ESCALATE (enum + DB CHECK), stored in both `rule_category` and
+   `final_category`.
+2. Readiness < 50 → REQUEST_EVIDENCE, whatever the default said.
+3. Review is required when: no classification ran (`JEV_UNAVAILABLE_REVIEW_REQUIRED`, reason
+   `classification_unavailable:<disabled|no_consent|…>`); confidence is below
+   `JEV_LOW_CONFIDENCE_THRESHOLD` (default 0.5) → `JEV_LOW_CONFIDENCE`; the model asked for review;
+   or the model disagrees with rule materiality. Yes/no answers carry no confidence, so they are
+   judged by `|2p−1|` against `JEV_NOUL_MARGIN_THRESHOLD` (default 0.3, i.e. at least 65% one way) —
+   tuned against real Jev answers, which sat around 0.53-0.73 on the sample export.
+4. `POLICY_BLOCKED` now means the model suggested a different category from the one we published.
+   Its answer stays in `jev_category`, and the report says so on the card.
+
+Two earlier rules are gone: "new or unallocated spend is never MONITOR" and "a high-severity
+material change is never MONITOR". Both bounded a model answer, and neither can fire against our own
+defaults — ownerless spend already defaults to REQUEST_EVIDENCE, and a MONITOR default means the
+change was not absolutely material, which is what the second rule required.
 
 ## Evidence packet v1 (`snapshots/packet.py`)
 

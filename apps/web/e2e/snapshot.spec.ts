@@ -21,7 +21,7 @@ test("a consented snapshot shows facts, labelled classification, and decision ca
   await expect(page.getByText("85 / 100")).toBeVisible();
 
   // Classification is labelled for what it is: the local stand-in, never presented as Jev.
-  await expect(page.getByText(/classified with Test classifier \(not a real model\)/)).toBeVisible();
+  await expect(page.getByText(/Test classifier \(not a real model\) was asked the same questions/)).toBeVisible();
   await expect(page.getByText(/TypeSafe Jev/)).toHaveCount(0);
 
   const cards = page.getByTestId("finding-card");
@@ -30,7 +30,10 @@ test("a consented snapshot shows facts, labelled classification, and decision ca
   await expect(ecs).toContainText("Request evidence");
   await expect(ecs).toContainText("first appeared in July 2026 at $1,840.00");
   await expect(ecs).toContainText("Calculated from your file");
-  await expect(ecs).toContainText("Model-assisted · Test classifier (not a real model): suggested Request evidence (90% confidence)");
+  // The rules publish the category; the model is shown beside it, agreeing or not.
+  await expect(ecs).toContainText("Our rules decided Request evidence");
+  await expect(ecs).toContainText("Test classifier (not a real model) agreed (90% confidence)");
+  await expect(page.getByText(/Our rules decide every category here/)).toBeVisible();
   // This export has no tags, so the card asks for the allocation rather than for a team it cannot name.
   await expect(ecs).toContainText("Tag this spend to a team, or add a cost category");
   await expect(ecs).toContainText("team or cost-allocation tags");
@@ -55,7 +58,7 @@ test("without consent the snapshot is rule-based and says so", async ({ page }, 
   await openReport(page, `noconsent+${info.project.name}@example-co.com`, false);
   await expect(page.getByText(/You did not allow model-assisted classification/).first()).toBeVisible();
   const ecs = page.getByRole("article", { name: "New service: Amazon Elastic Container Service" });
-  await expect(ecs).toContainText("Rule-based: no model classified this finding.");
+  await expect(ecs).toContainText("No model classified this finding, so there is no second opinion here.");
   await expect(ecs).toContainText("Read this one with extra care");
   await expect(ecs).toContainText("You did not allow model-assisted classification, so this finding is rule-based.");
 });

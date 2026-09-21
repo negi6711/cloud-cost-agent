@@ -54,22 +54,42 @@ def ok(c: Classification) -> ClassificationOutcome:
     return ClassificationOutcome(c)
 
 
-def test_confident_consistent_answer_passes() -> None:
+# --------------------------------------------------- the rules decide the category ---
+
+
+def test_the_published_category_is_the_rule_default() -> None:
     d = decide(CANDIDATE, ok(classification()), 85, 0.5)
     assert (d.final_category, d.model_status, d.policy_status, d.review_required) == (
         Category.INVESTIGATE, ModelStatus.SUCCEEDED, PolicyStatus.PASSED, False)
 
 
-def test_no_classification_uses_the_rule_default_and_requires_review() -> None:
+@pytest.mark.parametrize("suggested", [Category.ESCALATE, Category.MONITOR, Category.REQUEST_EVIDENCE])
+def test_a_confident_model_cannot_move_the_category(suggested: Category) -> None:
+    """The model is a second opinion. Even at 95% confidence it does not publish a decision."""
+    d = decide(CANDIDATE, ok(classification(category=suggested, category_answer=answer(suggested.value))), 85, 0.5)
+    assert d.final_category is CANDIDATE.default_category
+    assert d.policy_status == PolicyStatus.POLICY_BLOCKED  # disagreement is recorded, not acted on
+    assert d.model_status is ModelStatus.SUCCEEDED
+
+
+def test_agreement_is_not_recorded_as_a_block() -> None:
+    d = decide(CANDIDATE, ok(classification(category=Category.INVESTIGATE)), 85, 0.5)
+    assert d.policy_status == PolicyStatus.PASSED
+
+
+def test_no_classification_still_publishes_the_rule_default_and_requires_review() -> None:
     d = decide(CANDIDATE, ClassificationOutcome(None, UnavailableReason.NO_CONSENT), 85, 0.5)
     assert d.final_category is Category.INVESTIGATE
     assert d.model_status is ModelStatus.UNAVAILABLE_REVIEW_REQUIRED
     assert d.reasons == ("classification_unavailable:no_consent",) and d.review_required
 
 
-def test_low_confidence_requires_review_but_keeps_the_answer() -> None:
+# ------------------------------------------------------------- human review flags ---
+
+
+def test_low_confidence_requires_review_without_changing_the_decision() -> None:
     d = decide(CANDIDATE, ok(classification(category=Category.ESCALATE, category_answer=answer("ESCALATE", 0.4))), 85, 0.5)
-    assert (d.final_category, d.model_status) == (Category.ESCALATE, ModelStatus.LOW_CONFIDENCE)
+    assert (d.final_category, d.model_status) == (Category.INVESTIGATE, ModelStatus.LOW_CONFIDENCE)
     assert "low_confidence:category" in d.reasons and d.review_required
 
 
@@ -93,13 +113,24 @@ def test_materiality_disagreement_requires_review() -> None:
 
 def test_model_requested_review_is_honored() -> None:
     d = decide(CANDIDATE, ok(classification(needs_human_review=0.8)), 85, 0.5)
-    assert "model_requested_review" in d.reasons and d.policy_status == PolicyStatus.REVIEW_REQUIRED
+    assert "model_requested_review" in d.reasons and d.review_required
 
 
-def test_low_readiness_forces_request_evidence_over_the_model() -> None:
-    d = decide(CANDIDATE, ok(classification(category=Category.ESCALATE, category_answer=answer("ESCALATE"))), 40, 0.5)
+# ------------------------------------------------------------------- readiness ---
+
+
+def test_thin_data_forces_request_evidence_over_our_own_default() -> None:
+    d = decide(CANDIDATE, ok(classification()), 40, 0.5)
     assert d.final_category is Category.REQUEST_EVIDENCE
-    assert d.policy_status == PolicyStatus.POLICY_BLOCKED and "readiness_below_threshold" in d.reasons
+    assert "readiness_below_threshold" in d.reasons and d.review_required
+
+
+def test_overriding_our_own_default_is_not_recorded_as_blocking_the_model() -> None:
+    """The model agreed with where we landed, so nothing of its was blocked."""
+    d = decide(CANDIDATE, ok(classification(category=Category.REQUEST_EVIDENCE,
+                                            category_answer=answer("REQUEST_EVIDENCE"))), 40, 0.5)
+    assert d.final_category is Category.REQUEST_EVIDENCE
+    assert d.policy_status == PolicyStatus.REVIEW_REQUIRED
 
 
 def test_low_readiness_also_applies_without_a_model() -> None:
@@ -108,13 +139,12 @@ def test_low_readiness_also_applies_without_a_model() -> None:
 
 
 @pytest.mark.parametrize("kind", [FindingKind.NEW_SERVICE, FindingKind.UNALLOCATED])
-def test_ownerless_spend_is_never_monitor_only(kind: FindingKind) -> None:
-    c = replace(CANDIDATE, kind=kind)
-    d = decide(c, ok(classification(category=Category.MONITOR, category_answer=answer("MONITOR"))), 85, 0.5)
-    assert d.final_category is Category.REQUEST_EVIDENCE and "ownerless_spend_requires_evidence" in d.reasons
+def test_ownerless_spend_defaults_to_request_evidence_without_needing_a_rule(kind: FindingKind) -> None:
+    """The gate used to catch a model calling this MONITOR. Now the detector never proposes MONITOR
+    for spend with no confirmed owner, so there is nothing left to catch."""
+    from cca.detectors.core import _MISSING
 
-
-def test_high_severity_material_change_is_never_monitor_only() -> None:
-    c = replace(CANDIDATE, severity=Severity.HIGH)
+    assert kind in _MISSING
+    c = replace(CANDIDATE, kind=kind, default_category=Category.REQUEST_EVIDENCE)
     d = decide(c, ok(classification(category=Category.MONITOR, category_answer=answer("MONITOR"))), 85, 0.5)
-    assert d.final_category is Category.INVESTIGATE and "material_change_not_monitor_only" in d.reasons
+    assert d.final_category is Category.REQUEST_EVIDENCE

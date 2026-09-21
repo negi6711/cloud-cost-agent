@@ -81,15 +81,13 @@ def test_consented_run_is_classified_and_every_call_recorded(seed, owner, app_co
     assert run == {"status": "completed", "model_status": "JEV_SUCCEEDED", "model_provider": "typesafe",
                    "model_identifier": "jev-1.13.0"}
     rows = findings(owner, s.run_id)
-    assert [(r["jev_category"], r["final_category"], r["model_status"]) for r in rows] == [
-        ("REQUEST_EVIDENCE", "REQUEST_EVIDENCE", "JEV_SUCCEEDED"),  # new ECS service
-        ("INVESTIGATE", "INVESTIGATE", "JEV_SUCCEEDED"),  # Tax: the model's answer, kept (not high severity)
+    # Our rules publish the category; the model's answer is stored beside it, agreeing or not.
+    assert [(r["rule_category"], r["jev_category"], r["final_category"], r["policy_status"]) for r in rows] == [
+        ("REQUEST_EVIDENCE", "REQUEST_EVIDENCE", "REQUEST_EVIDENCE", "PASSED"),  # new ECS service: agreed
+        ("MONITOR", "INVESTIGATE", "MONITOR", "POLICY_BLOCKED"),  # Tax: the model wanted more, recorded only
     ]
+    assert all(r["model_status"] == "JEV_SUCCEEDED" for r in rows)
     assert rows[0]["owner"] == "Platform / Infrastructure" and rows[0]["jev_owner"] == "platform_infrastructure"
-    # What our rules decided on their own is kept beside the model's answer, so a later run can be
-    # asked whether the model changed any decision or only restated ours.
-    assert [r["rule_category"] for r in rows] == ["REQUEST_EVIDENCE", "MONITOR"]
-    assert rows[1]["rule_category"] != rows[1]["jev_category"]  # the model moved this one
     assert len(stub.calls) == 2
 
     calls = owner.execute("SELECT provider, model_requested, model_reported, request_id, status, input_tokens, "

@@ -12,7 +12,10 @@ interface Props {
  * facts calculated from the file, the model's suggestion, our rules, and human review.
  */
 export function FindingCard({ finding: f, modelLabel }: Props) {
-  const overridden = f.model && f.model.category !== f.finalCategory;
+  // The model never publishes a category (worker/src/cca/policy/gate.py). When its answer differs
+  // from ours the card says so plainly, because a reader who spots the gap and is not told why
+  // stops trusting everything else on the page.
+  const disagreed = f.model !== null && f.model.category !== f.finalCategory;
   // The report says once, at the top, that every finding needs human confirmation. This footer is
   // for the reasons that single THIS finding out; when there are none, it stays quiet.
   const reasons = notableReasons(f.policyReasons, f.model?.confidence ?? null);
@@ -60,32 +63,36 @@ export function FindingCard({ finding: f, modelLabel }: Props) {
 
         <section className="rounded-lg bg-subtle p-4" aria-label="Classification">
           <h4 className="text-xs font-semibold tracking-wide text-muted uppercase">Classification</h4>
-          {f.model && modelLabel ? (
-            <div className="mt-1 space-y-1">
-              <p>
-                Model-assisted · {modelLabel}: suggested{" "}
-                <strong>{CATEGORY_TEXT[f.model.category] ?? f.model.category}</strong>
-                {f.model.confidence !== null && ` (${Math.round(f.model.confidence * 100)}% confidence)`}.
-              </p>
-              <p className="text-muted">
-                Likely owner: {f.model.ownerLabel ?? "unknown"} · urgency {f.model.urgency ?? "n/a"} · risk of acting
-                without more evidence {f.model.risk ?? "n/a"}.
-              </p>
-              {f.ruleCategory && f.ruleCategory !== f.model.category && (
+          <div className="mt-1 space-y-1">
+            <p>
+              Our rules decided <strong>{CATEGORY_TEXT[f.finalCategory] ?? f.finalCategory}</strong>.
+            </p>
+            {f.model && modelLabel ? (
+              <>
                 <p className="text-muted">
-                  Without the model, our rules alone would have said{" "}
-                  <strong>{CATEGORY_TEXT[f.ruleCategory] ?? f.ruleCategory}</strong>.
+                  {disagreed ? (
+                    <>
+                      {modelLabel} suggested{" "}
+                      <strong>{CATEGORY_TEXT[f.model.category] ?? f.model.category}</strong>
+                      {f.model.confidence !== null && ` (${Math.round(f.model.confidence * 100)}% confidence)`}.
+                      Recorded for comparison; it does not change the decision.
+                    </>
+                  ) : (
+                    <>
+                      {modelLabel} agreed
+                      {f.model.confidence !== null && ` (${Math.round(f.model.confidence * 100)}% confidence)`}.
+                    </>
+                  )}
                 </p>
-              )}
-              {overridden && (
-                <p>
-                  Our rules set the category to <strong>{CATEGORY_TEXT[f.finalCategory]}</strong> instead.
+                <p className="text-muted">
+                  Likely owner: {f.model.ownerLabel ?? "unknown"} · urgency {f.model.urgency ?? "n/a"} · risk of acting
+                  without more evidence {f.model.risk ?? "n/a"}.
                 </p>
-              )}
-            </div>
-          ) : (
-            <p className="mt-1">Rule-based: no model classified this finding.</p>
-          )}
+              </>
+            ) : (
+              <p className="text-muted">No model classified this finding, so there is no second opinion here.</p>
+            )}
+          </div>
           <p className="mt-2 text-xs text-muted">
             {f.explanationSource === "template"
               ? "The text above was written from a fixed template using only the calculated facts."

@@ -67,7 +67,8 @@ export async function uploadAndOpenReport(
   await expect(page.getByRole("heading", { name: "Cloud Cost Decision Snapshot" })).toBeVisible();
   // Unlocking starts the classification phase in the worker; the report page is not live-updating,
   // so reload until that phase has landed.
-  if (typesafeConsent) await reloadUntil(page, /classified with/);
+  // The classification phase has landed once the banner names the model that was asked.
+  if (typesafeConsent) await reloadUntil(page, /was asked the same questions/);
 }
 
 async function reloadUntil(page: Page, pattern: RegExp, timeoutMs = 30_000): Promise<void> {

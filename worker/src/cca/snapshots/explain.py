@@ -132,9 +132,9 @@ def next_action(
         who = owner or "the owning team"
         return f"Ask {who} what changed in {month_name(month)}{collect} before deciding anything."
     if category is Category.ESCALATE:
-        cause = f"Confirm the cause with {owner}" if owner else "Confirm the owner and the cause"
-        return ("Raise this with engineering leadership: the change is large relative to the bill. "
-                f"{cause} before any cost change.")
+        cause = f"confirm the cause with {owner}" if owner else "confirm who owns it and what caused it"
+        return ("Large relative to the whole bill, so raise it in this month's cost review rather "
+                f"than leaving it for next month: {cause} before any cost change.")
     return "No action yet. Check again after the next complete month."
 
 

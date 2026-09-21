@@ -42,12 +42,16 @@ function modelLabel(d: SnapshotDetail): string | null {
 }
 
 function classificationNote(d: SnapshotDetail): string {
+  // Every category on this page comes from our rules. A model, when one ran, is a second opinion
+  // recorded beside the decision — saying anything else would misdescribe how the gate works.
   const label = modelLabel(d);
-  if (label) return `Findings were classified with ${label}; our rules made the final call.`;
-  if (d.consentBasis !== "typesafe:granted") {
-    return "You did not allow model-assisted classification, so every finding is rule-based and marked for human review.";
+  if (label) {
+    return `Our rules decide every category here. ${label} was asked the same questions, and its answer is shown on each card for comparison.`;
   }
-  return "Model-assisted classification did not run, so every finding is rule-based and marked for human review.";
+  if (d.consentBasis !== "typesafe:granted") {
+    return "You did not allow model-assisted classification, so no second opinion was recorded. The categories are the same rules that decide every report.";
+  }
+  return "Model-assisted classification did not run, so no second opinion was recorded. The categories are the same rules that decide every report.";
 }
 
 export default async function SnapshotPage({ params }: PageProps<"/snapshot/[id]">) {

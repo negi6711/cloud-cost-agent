@@ -1,17 +1,31 @@
 """Deterministic policy gate: the last word on every finding's category and review state.
 
-A model classification is a suggestion. The gate keeps it (as jev_category) but decides the
-final category from rules that the model cannot change:
+**Our rules decide the category.** A model classification is a second opinion: it is recorded next
+to the decision (`jev_category`), it can ask for a human, and it never publishes a category.
 
-1. The category is always one of the four live decisions (enforced by the enum and a DB CHECK).
-2. No classification -> the rule-based default, human review required.
-3. Low confidence, a model-requested review, or disagreement with deterministic materiality
-   -> human review required. Pick-one and score answers are judged by the model's own confidence;
-   yes/no answers have no confidence, so they are judged by their distance from a coin toss
-   (|2p-1|) against a separate, looser threshold.
-4. Data readiness below the threshold -> REQUEST_EVIDENCE.
-5. New or unallocated spend is never "just monitor": it has no confirmed owner -> REQUEST_EVIDENCE.
-6. A high-severity material change is never "just monitor" -> INVESTIGATE.
+That is a change from the first design, in which a successful classification supplied the category
+and the rules could only override it in narrow cases. Measured over 58 findings from ten exports
+(ADR 0003), the model changed the published decision on 43 of them, used two of the four categories,
+and had a median confidence of 0.43 — while the report told the reader "our rules made the final
+call". The claim was false and the provenance was unreadable. Now it is true by construction.
+
+The rules, in order:
+
+1. The category is the deterministic default for this finding (`Candidate.default_category`),
+   always one of the four live decisions (enforced by the enum and a DB CHECK).
+2. Data readiness below the threshold -> REQUEST_EVIDENCE, whatever the default said: with data this
+   thin, collecting evidence is the only honest next step.
+3. Human review is required when: no classification ran; the model's confidence is low; the model
+   asked for review; or the model disagrees with our deterministic materiality. Pick-one and score
+   answers are judged by the model's own confidence; yes/no answers have no confidence, so they are
+   judged by their distance from a coin toss (|2p-1|) against a separate, looser threshold.
+
+Two rules were removed when the model stopped deciding: "ownerless spend is never monitor-only" and
+"a high-severity material change is never monitor-only". Both existed to bound a model answer, and
+neither can fire against our own defaults — new and unallocated spend already default to
+REQUEST_EVIDENCE, and a MONITOR default means the change was not absolutely material, which is
+exactly what the second rule required. If a model is ever given authority again (ADR 0004), they
+come back with it.
 """
 
 from __future__ import annotations
@@ -20,12 +34,13 @@ from dataclasses import dataclass
 
 from cca.detectors.thresholds import READINESS_REQUEST_EVIDENCE_BELOW
 from cca.providers.base import ClassificationOutcome, ModelStatus
-from cca.snapshots.types import Candidate, Category, FindingKind, Severity
+from cca.snapshots.types import Candidate, Category
 
 
 class PolicyStatus:
     PASSED = "PASSED"
     REVIEW_REQUIRED = "REVIEW_REQUIRED"
+    #: The model suggested a different category from the one our rules published.
     POLICY_BLOCKED = "POLICY_BLOCKED"
 
 
@@ -54,13 +69,14 @@ def decide(
     review = False
     c = outcome.classification
 
+    # The decision is ours, whether or not a model ran.
+    category = candidate.default_category
+
     if c is None:
-        category = candidate.default_category
         model_status = ModelStatus.UNAVAILABLE_REVIEW_REQUIRED
         reasons.append(f"classification_unavailable:{outcome.unavailable_reason or 'unknown'}")
         review = True
     else:
-        category = c.category
         model_status = ModelStatus.SUCCEEDED
         low = []
         if c.category_answer.confidence < low_confidence:
@@ -80,22 +96,18 @@ def decide(
             reasons.append("materiality_conflict")
             review = True
 
-    blocked = False
     if readiness_score < READINESS_REQUEST_EVIDENCE_BELOW and category is not Category.REQUEST_EVIDENCE:
-        category, blocked = Category.REQUEST_EVIDENCE, True
+        # Our own rule adjusting our own default is not a "block", it is just the rule.
+        category = Category.REQUEST_EVIDENCE
         reasons.append("readiness_below_threshold")
-    if candidate.kind in (FindingKind.NEW_SERVICE, FindingKind.UNALLOCATED) and category is Category.MONITOR:
-        category, blocked = Category.REQUEST_EVIDENCE, True
-        reasons.append("ownerless_spend_requires_evidence")
-    if candidate.severity is Severity.HIGH and candidate.material_absolute and category is Category.MONITOR:
-        category, blocked = Category.INVESTIGATE, True
-        reasons.append("material_change_not_monitor_only")
-
-    if blocked:
         review = True
-        # Only a model's suggestion can be "blocked"; overriding our own default is just the rule.
-        policy_status = PolicyStatus.POLICY_BLOCKED if c is not None else PolicyStatus.REVIEW_REQUIRED
+
+    if c is not None and c.category is not category:
+        # Recorded, not acted on. This is the number ADR 0003 watches per model version.
+        policy_status = PolicyStatus.POLICY_BLOCKED
+    elif review:
+        policy_status = PolicyStatus.REVIEW_REQUIRED
     else:
-        policy_status = PolicyStatus.REVIEW_REQUIRED if review else PolicyStatus.PASSED
+        policy_status = PolicyStatus.PASSED
 
     return Decision(category, model_status, policy_status, tuple(reasons), review)
