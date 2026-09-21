@@ -92,6 +92,13 @@
       "when": 1789909206861,
       "tag": "0012_rule_category",
       "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1789967445054,
+      "tag": "0013_finding_identity",
+      "breakpoints": true
     }
   ]
 }

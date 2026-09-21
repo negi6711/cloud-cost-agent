@@ -8,13 +8,15 @@ from uuid import UUID
 from psycopg.types.json import Jsonb
 
 from cca.db import Connection
+from cca.detectors.core import finding_key
 from cca.providers.base import CallRecord
 from cca.snapshots.analyze import Analysis, AnalyzedFinding
 from cca.snapshots.packet import PACKET_VERSION
 from cca.snapshots.types import MISSING_EVIDENCE_LABELS, OWNER_LABELS
 
 _FINDING_COLUMNS = (
-    "tenant_id, snapshot_run_id, evidence_id, rank, kind, category, severity, title, explanation, "
+    "tenant_id, snapshot_run_id, evidence_id, finding_key, dimension, label, rank, kind, category, "
+    "severity, title, explanation, "
     "observed_value, baseline_value, delta_value, owner, evidence, missing_evidence, "
     "rule_category, jev_category, jev_owner, jev_urgency, jev_risk, jev_confidence, jev_probabilities, "
     "model_evidence_ids, model_status, final_category, policy_status, policy_reasons, review_required, "
@@ -29,6 +31,9 @@ def _finding_values(tenant_id: UUID, run_id: UUID, f: AnalyzedFinding) -> tuple[
         tenant_id,
         run_id,
         c.evidence_id,
+        finding_key(c.kind, (c.dimension, c.label)),
+        c.dimension,
+        c.label,
         f.rank,
         c.kind.value,
         d.final_category.value,

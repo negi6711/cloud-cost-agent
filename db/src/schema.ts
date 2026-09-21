@@ -270,6 +270,11 @@ export const snapshotFinding = pgTable(
     tenantId: tenantId(),
     snapshotRunId: uuid("snapshot_run_id").notNull(),
     evidenceId: text("evidence_id").notNull(),
+    // What the finding is about, independent of the file it arrived in: this is what lets a later
+    // upload ask whether last month's finding is still there (ADR 0005).
+    findingKey: text("finding_key"),
+    dimension: text("dimension"),
+    label: text("label"),
     rank: integer("rank").notNull(),
     kind: text("kind").notNull(),
     category: text("category").notNull(),
@@ -306,6 +311,8 @@ export const snapshotFinding = pgTable(
   },
   (t) => [
     unique("snapshot_finding_evidence_uq").on(t.tenantId, t.snapshotRunId, t.evidenceId),
+    // "Is last month's finding still there?" reads by subject across runs.
+    index("snapshot_finding_key_idx").on(t.tenantId, t.findingKey),
     foreignKey({
       columns: [t.tenantId, t.snapshotRunId],
       foreignColumns: [snapshotRun.tenantId, snapshotRun.id],

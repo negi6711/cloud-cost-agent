@@ -22,7 +22,7 @@ What is *not* reproducible in those tools, measured on our own test corpus:
 | A refusal, when the data cannot support a conclusion | A June truncated at the 18th is detected from the export's own end dates and **not** compared against a full May |
 | Named evidence gaps per finding | "This export has no usage-type breakdown, so what is missing first is resource-level billing" |
 | Provenance for every number | Every figure traces to the rows it came from: `L5, L6, L8 and 6 more` |
-| Decision memory | *Not built yet — see §5. This is the one that turns a report into a service.* |
+| Decision memory | "Since June 2026: Amazon EC2 is still here and larger; Amazon S3 is no longer a finding" (ADR 0005) |
 
 Our category is **evidence discipline and decision memory**, not cost visibility. If we cannot
 defend that sentence in a customer conversation, we should stop building and rethink the product,
@@ -115,8 +115,8 @@ the reader back to searching. Five changes close that gap, and four of them need
 4. **Make the ask path-specific.** Data transfer needs the traffic path: cross-AZ, cross-region,
    internet egress, NAT gateway, CloudFront. That is a small curated map from usage-type family to
    the right question — domain knowledge we encode once, not a judgement we delegate.
-5. **Close the loop next month.** Without it, nobody — including us — can attribute any outcome to
-   the product.
+5. ~~**Close the loop next month.**~~ **Built** (ADR 0005): the second upload says what became of
+   the first report's findings, matched by subject across workspaces.
 
 ## 5. Why the loop is the product
 

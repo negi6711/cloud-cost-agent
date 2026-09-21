@@ -8,6 +8,7 @@ from decimal import Decimal
 
 import pytest
 
+from cca.detectors.core import finding_key
 from cca.parsers import parse_billing_export
 from cca.providers.base import UnavailableProvider, UnavailableReason
 from cca.settings import REPO_ROOT
@@ -353,3 +354,18 @@ def test_environment_narrows_a_finding_when_the_export_carries_it() -> None:
     f = ec2_finding("08_gpu_hours_growth_cur.csv")
     environments = {c.label: c.share for c in f.candidate.components if c.dimension == "environment"}
     assert "staging" in environments and environments["staging"] > Decimal("0.5")
+
+
+def test_a_finding_keeps_its_identity_across_files() -> None:
+    """Two uploads a month apart are different files, with different hashes and different months.
+    If the EC2 increase does not carry the same key, nothing can ask what became of it."""
+    first, second = fixture("icp/17a_month_one_cur.csv"), fixture("icp/17b_month_two_cur.csv")
+
+    def keys(a: Analysis) -> set[str]:
+        return {finding_key(f.candidate.kind, (f.candidate.dimension, f.candidate.label)) for f in a.findings}
+
+    assert keys(first) & keys(second) == {finding_key(
+        FindingKind.MATERIAL_INCREASE, ("service", "Amazon Elastic Compute Cloud - Compute"))}
+    # The evidence ids, which carry the file and the month, must all differ.
+    assert {f.candidate.evidence_id for f in first.findings}.isdisjoint(
+        {f.candidate.evidence_id for f in second.findings})

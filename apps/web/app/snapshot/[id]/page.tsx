@@ -7,7 +7,9 @@ import { DeleteFileButton } from "@/components/admin-controls";
 import { FindingCard } from "@/components/finding-card";
 import { ManualReviewButton } from "@/components/manual-review-button";
 import { ProfileForm } from "@/components/profile-form";
+import { SinceLastSnapshot } from "@/components/since-last-snapshot";
 import { money, monthLabel, pct } from "@/lib/format";
+import { snapshotHistory } from "@/lib/history";
 import { profileIncomplete } from "@/lib/profile";
 import { markReportViewed } from "@/lib/snapshots";
 import { getSnapshotDetail, type SnapshotDetail } from "@/lib/snapshot-detail";
@@ -72,6 +74,9 @@ export default async function SnapshotPage({ params }: PageProps<"/snapshot/[id]
 
   const fileId = await sourceFileForRun(tenantId!, id);
   const s = d.summary;
+  // Read across every workspace this viewer owns: a second upload a month later usually lands in a
+  // new one, and their verified email is the only thread between them.
+  const history = owned ? await snapshotHistory(viewer.tenantIds, id, s) : null;
   const cur = s?.currency ?? null;
   const done = d.completedAt !== null;
   const failure = d.issues.find((i) => i.severity === "error");
@@ -161,6 +166,8 @@ export default async function SnapshotPage({ params }: PageProps<"/snapshot/[id]
           )}
         </section>
       )}
+
+      {history && <SinceLastSnapshot history={history} currency={cur} />}
 
       {d.findings.length > 0 && (
         <section className="mt-10" aria-labelledby="findings-heading">

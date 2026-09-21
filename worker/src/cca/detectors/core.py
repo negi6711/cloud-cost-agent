@@ -76,10 +76,26 @@ class Detection:
     notes: list[str] = field(default_factory=list)
 
 
-def evidence_id(file_sha256: str, kind: FindingKind, key: Key, month: date) -> str:
+def finding_key(kind: FindingKind, key: Key) -> str:
+    """What this finding is *about*, independent of the file it arrived in or the month it covers.
+
+    "The ECS increase" is the same subject in September as in August, even though the export has a
+    different hash and the month has moved on. Without this there is no way to ask whether last
+    month's finding is still there, which is the only way the product can ever show that acting on
+    one of its findings worked.
+
+    The label is hashed rather than stored here so the key carries no customer text. It is a subject
+    identifier, not a display value: a service renamed between exports starts a new subject, which
+    is honest — we cannot prove the two are the same thing.
+    """
     dimension, label = key
     label_hash = hashlib.sha256(label.encode("utf-8")).hexdigest()[:8]
-    return f"ev_{file_sha256[:12]}_{kind.value}_{dimension}_{label_hash}_{month:%Y%m}"
+    return f"{kind.value}_{dimension}_{label_hash}"
+
+
+def evidence_id(file_sha256: str, kind: FindingKind, key: Key, month: date) -> str:
+    """This finding, in this file, for this month. The stable subject is the middle of it."""
+    return f"ev_{file_sha256[:12]}_{finding_key(kind, key)}_{month:%Y%m}"
 
 
 def _pct(delta: Decimal, baseline: Decimal | None) -> Decimal | None:

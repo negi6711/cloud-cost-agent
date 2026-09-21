@@ -1,0 +1,10 @@
+TimePeriodStart,TimePeriodEnd,LinkedAccountId,LinkedAccountName,Region,Service,UsageType,Operation,ResourceId,UsageQuantity,UsageUnit,UnblendedCost,Currency,LineItemType,Environment,Team
+2026-06-01,2026-06-30,123456789012,prod-platform,us-east-1,Amazon Elastic Compute Cloud - Compute,BoxUsage:m6i.large,RunInstances,arn:aws:us-east-1:123456789012:asg/api,63510.00,Hrs,6096.96,USD,Usage,production,platform
+2026-06-01,2026-06-30,123456789012,prod-platform,us-east-1,Amazon Simple Storage Service,TimedStorage-ByteHrs,StandardStorage,arn:aws:us-east-1:123456789012:bucket/app-assets,36800.00,GB-Mo,846.40,USD,Usage,production,platform
+2026-06-01,2026-06-30,123456789012,prod-platform,us-east-1,Amazon Relational Database Service,InstanceUsage:db.r6g.large,CreateDBInstance,arn:aws:us-east-1:123456789012:db/primary,2190.00,Hrs,569.40,USD,Usage,production,data
+2026-06-01,2026-06-30,123456789012,prod-platform,us-east-1,AWS Data Transfer,USE1-DataTransfer-Out-Bytes,PublicIP-Out,arn:aws:us-east-1:123456789012:dt/internet,9450.00,GB,850.50,USD,Usage,production,platform
+2026-07-01,2026-07-31,123456789012,prod-platform,us-east-1,Amazon Elastic Compute Cloud - Compute,BoxUsage:m6i.large,RunInstances,arn:aws:us-east-1:123456789012:asg/api,82563.00,Hrs,7926.05,USD,Usage,production,platform
+2026-07-01,2026-07-31,123456789012,prod-platform,us-east-1,Amazon Simple Storage Service,TimedStorage-ByteHrs,StandardStorage,arn:aws:us-east-1:123456789012:bucket/app-assets,37168.00,GB-Mo,854.86,USD,Usage,production,platform
+2026-07-01,2026-07-31,123456789012,prod-platform,us-east-1,Amazon Relational Database Service,InstanceUsage:db.r6g.large,CreateDBInstance,arn:aws:us-east-1:123456789012:db/primary,2205.07,Hrs,573.32,USD,Usage,production,data
+2026-07-01,2026-07-31,123456789012,prod-platform,us-east-1,AWS Data Transfer,USE1-DataTransfer-Out-Bytes,PublicIP-Out,arn:aws:us-east-1:123456789012:dt/internet,9733.50,GB,876.02,USD,Usage,production,platform
+2026-07-01,2026-07-31,123456789012,prod-platform,us-east-1,Amazon Virtual Private Cloud,USE1-NatGateway-Bytes,NatGateway,arn:aws:us-east-1:123456789012:natgw/private-a,14000.00,GB,630.00,USD,Usage,production,platform

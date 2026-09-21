@@ -355,6 +355,34 @@ SCENARIOS: tuple[Scenario, ...] = (
         lines=(ec2(qty_factors=("1", "1.18")), s3(qty_factors=("1", "1.03")), rds()),
         extras={"delimiter": ";", "decimal_comma": "1"},
     ),
+    # A customer who comes back. 17a is what they uploaded in July, 17b in August: EC2 keeps
+    # climbing (the finding carries), S3's jump does not repeat (it resolves), and NAT is new.
+    Scenario(
+        name="17a_month_one_cur",
+        layout="cur", months=("2026-05-01", "2026-06-01"), effect="volume",
+        watch="Amazon Elastic Compute Cloud - Compute",
+        story="First upload: EC2 usage up 45% and a one-off S3 jump.",
+        lines=(
+            ec2(qty_factors=("1", "1.45")),
+            s3(qty_factors=("1", "1.60")),
+            rds(), transfer(qty_factors=("1", "1.05")),
+        ),
+    ),
+    Scenario(
+        name="17b_month_two_cur",
+        layout="cur", months=("2026-06-01", "2026-07-01"), effect="volume",
+        watch="Amazon Elastic Compute Cloud - Compute",
+        story="Same customer a month later: EC2 still climbing, S3 settled at its new level, and "
+              "NAT gateway traffic appears for the first time.",
+        lines=(
+            ec2(qty=Decimal("63510"), qty_factors=("1", "1.30")),
+            s3(qty=Decimal("36800"), qty_factors=("1", "1.01")),
+            rds(), transfer(qty=Decimal("9450"), qty_factors=("1", "1.03")),
+            Line(service="Amazon Virtual Private Cloud", usage_type="USE1-NatGateway-Bytes",
+                 unit="GB", rate=RATE["nat_gateway_gb"], qty=Decimal("14000"),
+                 qty_factors=("0", "1"), operation="NatGateway", resource="natgw/private-a"),
+        ),
+    ),
     Scenario(
         name="16a_paired_cost_ce",
         layout="ce", months=("2026-05-01", "2026-06-01"), effect="rate",
