@@ -8,6 +8,8 @@ import { money, monthLabel, pct } from "@/lib/format";
 const MAX_BYTES = 25 * 1024 * 1024;
 const POLL_MS = 2_000;
 const TERMINAL = new Set(["completed", "insufficient_data", "failed"]);
+/** How long a queued run may sit before we stop saying "under a minute" and say what is happening. */
+const SLOW_AFTER_MS = 45_000;
 
 const STATUS_LABELS: Record<string, string> = {
   queued: "Queued for processing",
@@ -46,7 +48,16 @@ type Phase =
   | { kind: "idle" }
   | { kind: "uploading"; percent: number }
   | { kind: "verifying" }
-  | { kind: "processing"; runId: string; status: string; message?: string | null; teaser?: Teaser | null }
+  | {
+      kind: "processing";
+      runId: string;
+      status: string;
+      startedAt: number;
+      /** Set by the poll once this has been waiting longer than a cold start should take. */
+      slow?: boolean;
+      message?: string | null;
+      teaser?: Teaser | null;
+    }
   | { kind: "unlocked"; email: string }
   | { kind: "error"; message: string };
 
@@ -99,6 +110,8 @@ export function UploadFlow({ disclosure }: Props) {
   useEffect(() => {
     if (!processing || TERMINAL.has(processing.status)) return;
     const timer = setTimeout(async () => {
+      // Elapsed time belongs here rather than in render: the poll is what makes it change.
+      const slow = Date.now() - processing.startedAt > SLOW_AFTER_MS;
       try {
         const res = await fetch(`/api/snapshots/${processing.runId}`, { cache: "no-store" });
         if (res.ok) {
@@ -107,6 +120,8 @@ export function UploadFlow({ disclosure }: Props) {
             kind: "processing",
             runId: processing.runId,
             status: body.status,
+            startedAt: processing.startedAt,
+            slow,
             message: body.message,
             teaser: body.teaser,
           });
@@ -115,7 +130,7 @@ export function UploadFlow({ disclosure }: Props) {
       } catch {
         // transient; keep polling
       }
-      setPhase({ ...processing });
+      setPhase({ ...processing, slow });
     }, POLL_MS);
     return () => clearTimeout(timer);
   }, [processing]);
@@ -160,7 +175,7 @@ export function UploadFlow({ disclosure }: Props) {
         sourceFileId: completed.sourceFileId,
         idempotencyKey: crypto.randomUUID(),
       });
-      setPhase({ kind: "processing", runId: snapshotRunId, status: "queued" });
+      setPhase({ kind: "processing", runId: snapshotRunId, status: "queued", startedAt: Date.now() });
     } catch (error) {
       setPhase({ kind: "error", message: error instanceof Error ? error.message : "Something went wrong." });
     }
@@ -206,13 +221,18 @@ export function UploadFlow({ disclosure }: Props) {
         />
       );
     }
+    // A screen that looks the same after fifteen seconds and fifteen minutes teaches people to
+    // wait for something that may never arrive.
+    const stalled = processing.status === "queued" && processing.slow === true;
     return (
       <div role="status" aria-live="polite" className="rounded-xl border border-border bg-white p-6">
         <p className="text-sm font-medium text-accent">File accepted</p>
         <h2 className="mt-1 text-lg font-semibold">{STATUS_LABELS[processing.status] ?? "Processing"}</h2>
         <ProgressBar indeterminate label="Processing" />
         <p className="mt-4 text-sm leading-6 text-muted">
-          We are calculating your figures from the file itself. This usually takes under a minute.
+          {stalled
+            ? "This is taking longer than usual: the processor may be starting up. This page keeps checking, and your file is safe in the queue either way."
+            : "We are calculating your figures from the file itself. This usually takes under a minute."}
         </p>
       </div>
     );

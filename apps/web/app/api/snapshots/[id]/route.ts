@@ -5,6 +5,7 @@ import { errorResponse, newRequestId } from "@/lib/http";
 import { log } from "@/lib/log";
 import { visitorSessionFrom } from "@/lib/request-session";
 import { getSnapshotStatus } from "@/lib/snapshots";
+import { rekickIfStalled } from "@/lib/worker-kick";
 
 /**
  * Processing status and the teaser headline for the upload page. Deliberately no finding text,
@@ -21,6 +22,7 @@ export async function GET(request: Request, ctx: RouteContext<"/api/snapshots/[i
   try {
     const status = await getSnapshotStatus(session.tenantId, id);
     if (!status) return errorResponse(404, requestId, "Not found.");
+    rekickIfStalled(id, requestId, status.status === "queued");
     return NextResponse.json(status, {
       headers: { "x-request-id": requestId, "cache-control": "no-store" },
     });

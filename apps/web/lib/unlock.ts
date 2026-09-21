@@ -8,7 +8,7 @@ import { getAuth } from "./auth";
 import { withTenant } from "./db";
 import { UserFacingError } from "./errors";
 import { log } from "./log";
-import { kickWorker } from "./worker-kick";
+import { scheduleKick } from "./worker-kick";
 
 export interface UnlockResult {
   leadId: string;
@@ -98,7 +98,7 @@ export async function unlockReport(tenantId: string, input: UnlockInput, request
     return { leadId, snapshotRunId: run?.id ?? null };
   });
 
-  if (result.snapshotRunId) await kickWorker(requestId);
+  if (result.snapshotRunId) scheduleKick(requestId);
   log.info("report.unlocked", { requestId, snapshotRunId: result.snapshotRunId, consentBasis });
 
   // Deliver the report behind a verified email: the link proves the address is theirs.

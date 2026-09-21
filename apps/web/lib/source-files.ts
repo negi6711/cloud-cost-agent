@@ -6,7 +6,7 @@ import { eq, sql } from "drizzle-orm";
 import { withTenant } from "./db";
 import { log } from "./log";
 import { storage } from "./storage";
-import { kickWorker } from "./worker-kick";
+import { scheduleKick } from "./worker-kick";
 
 export interface DeleteActor {
   type: "prospect" | "admin";
@@ -74,7 +74,7 @@ export async function deleteSourceFile(
           })
           .onConflictDoNothing({ target: job.idempotencyKey }),
       );
-      await kickWorker(requestId);
+      scheduleKick(requestId);  // a cleanup job; nobody is waiting on this response for it
     }
   }
   log.info("source_file.deleted", { requestId, sourceFileId, runsDeleted: removed.runsDeleted, objectDeleted });
