@@ -134,6 +134,34 @@ describe("upload → snapshot flow", () => {
     expect(statusBody).not.toHaveProperty("findings");
   });
 
+  it("counts the run's findings in the teaser", async () => {
+    const visitor = await makeVisitor();
+    const { body } = await upload(visitor, CSV);
+    const created = await createSnapshot(
+      jsonRequest("/api/snapshots", { sourceFileId: body.sourceFileId, idempotencyKey: crypto.randomUUID() }, visitor.cookie),
+    );
+    const { snapshotRunId } = (await created.json()) as { snapshotRunId: string };
+
+    // Stand in for the worker: finish the run with two findings.
+    await owner("UPDATE snapshot_run SET status = 'completed', summary = '{}'::jsonb WHERE id = $1", [snapshotRunId]);
+    for (const rank of [1, 2]) {
+      await owner(
+        `INSERT INTO snapshot_finding (tenant_id, snapshot_run_id, evidence_id, rank, kind, category, severity, title,
+           explanation, model_status, final_category, policy_status, review_required, explanation_source, next_action)
+         VALUES ($1, $2, $3, $4, 'material_increase', 'INVESTIGATE', 'medium', 't', 'e', 'unavailable', 'INVESTIGATE',
+           'REVIEW_REQUIRED', true, 'template', 'n')`,
+        [visitor.tenantId, snapshotRunId, `ev_${rank}`, rank],
+      );
+    }
+
+    const res = await getStatus(
+      new Request(`http://localhost/api/snapshots/${snapshotRunId}`, { headers: { cookie: visitor.cookie } }),
+      { params: Promise.resolve({ id: snapshotRunId }) },
+    );
+    const status = (await res.json()) as { teaser: { findingCount: number } | null };
+    expect(status.teaser?.findingCount).toBe(2);
+  });
+
   it("is idempotent for a repeated completion with the same key", async () => {
     const visitor = await makeVisitor();
     const bytes = new TextEncoder().encode(CSV);

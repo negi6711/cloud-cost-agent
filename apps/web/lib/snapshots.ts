@@ -154,7 +154,9 @@ export async function getSnapshotStatus(tenantId: string, runId: string): Promis
         completedAt: snapshotRun.completedAt,
         unlockedAt: snapshotRun.unlockedAt,
         summary: snapshotRun.summary,
-        findings: sql<number>`(select count(*)::int from snapshot_finding f where f.snapshot_run_id = ${snapshotRun.id})`,
+        // Qualify the outer column by hand: Drizzle renders ${snapshotRun.id} as a bare "id" here,
+        // which the subquery resolves to f.id, so the count was always zero.
+        findings: sql<number>`(select count(*)::int from snapshot_finding f where f.snapshot_run_id = ${snapshotRun}.id)`,
       })
       .from(snapshotRun)
       .where(eq(snapshotRun.id, runId))
